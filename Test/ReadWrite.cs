@@ -1,5 +1,5 @@
-using OPCUaClient;
-using OPCUaClient.Objects;
+using OpcUa.NetBridge;
+using OpcUa.NetBridge.Objects;
 namespace Test
 {
     public class ReadWrite

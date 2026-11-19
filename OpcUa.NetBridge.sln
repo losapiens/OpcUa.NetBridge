@@ -1,11 +1,16 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.2.32602.215
+# Visual Studio Version 18
+VisualStudioVersion = 18.12.12412.261
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OPCUaClient", "OPCUaClient\OPCUaClient.csproj", "{0F4FD153-4362-443C-A97B-F17EED146330}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpcUa.NetBridge", "OpcUa.NetBridge\OpcUa.NetBridge.csproj", "{0F4FD153-4362-443C-A97B-F17EED146330}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Test", "Test\Test.csproj", "{69934EBF-1DBC-4407-90CA-312DACD8942F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpcUa.NetBridge.Tests", "Test\OpcUa.NetBridge.Tests.csproj", "{69934EBF-1DBC-4407-90CA-312DACD8942F}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{685D972F-A3E7-4CC8-96A4-98E43467FFC1}"
+	ProjectSection(SolutionItems) = preProject
+		OpcUa.NetBridge\LICENSE.md = OpcUa.NetBridge\LICENSE.md
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

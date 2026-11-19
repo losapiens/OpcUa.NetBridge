@@ -1,24 +1,27 @@
-# [OPCUaClient](https://www.nuget.org/packages/OPCUaClient/)
+# [OpcUa.NetBridge](https://www.nuget.org/packages/OpcUa.NetBridge/)
 Client for OPC UA Server
-
-# [OPCUaStandard](https://www.nuget.org/packages/OPCUaStandard)
-A version of the OPC Ua client in .NET Standard
 
 ## Build with
 [OPC UA Foundation](https://github.com/OPCFoundation/UA-.NETStandard) library
 
+> **Note:** Based on the original [OpcUa.NetBridge](https://www.nuget.org/packages/OpcUa.NetBridge/) project created by [Joc-Luis](https://github.com/joc-luis/OpcUa.NetBridge).
+
+
+# TODO...
+
 ## Certificates
 The certificates are in the same folder the application executable.
 
-## How to use
+
+## How to use 
 ### Install
 ```
-dotnet add package OPCUaClient
+dotnet add package OpcUa.NetBridge
 ```
 ### Import
 
 ```cs
- using OPCUaClient;
+ using OpcUa.NetBridge;
 ```
 
 

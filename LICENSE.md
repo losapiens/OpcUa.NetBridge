@@ -1,6 +1,7 @@
 The MIT License (MIT)
 
 Copyright (c) 2021 Joc-Luis
+Copyright (c) 2026 Losapiens
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in

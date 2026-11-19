@@ -1,4 +1,4 @@
 global using NUnit.Framework;
 global using System.Linq;
-global using OPCUaClient;
-global using OPCUaClient.Objects;
+global using OpcUa.NetBridge;
+global using OpcUa.NetBridge.Objects;

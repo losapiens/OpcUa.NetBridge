@@ -1,4 +1,4 @@
-﻿using OPCUaClient;
+﻿using OpcUa.NetBridge;
 
 namespace Test
 {

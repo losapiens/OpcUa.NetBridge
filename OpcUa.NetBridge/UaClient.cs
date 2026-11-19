@@ -1,11 +1,10 @@
 ﻿using Opc.Ua;
 using Opc.Ua.Client;
-using OPCUaClient.Objects;
-using OPCUaClient.Exceptions;
 using Opc.Ua.Configuration;
-using Opc.Ua.Gds;
+using OpcUa.NetBridge.Exceptions;
+using OpcUa.NetBridge.DTO;
 
-namespace OPCUaClient
+namespace OpcUa.NetBridge
 {
     /// <summary>
     /// Client for OPCUA Server

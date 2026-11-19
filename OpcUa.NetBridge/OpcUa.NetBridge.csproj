@@ -1,0 +1,41 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GenerateDocumentationFile>True</GenerateDocumentationFile>
+	
+	<!-- Metadati del pacchetto (opzionali per GitHub, utili per NuGet) -->
+	<PackageId>OpcUa.NetBridge</PackageId>
+	<Title>OpcUa.NetBridge</Title>
+	<Product>OpcUa.NetBridge</Product>
+	<Description>A modern .NET 8+ wrapper around the official OPC Foundation stack for simplified read, write, and monitoring operations.</Description>
+	<Authors>Francesco Lo Sapio</Authors>
+	<Company>$(Authors)</Company>
+    <Copyright>Copyright (c) 2026 Francesco Lo Sapio</Copyright>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>connection.png</PackageIcon>
+	<PackageTags>opcua opc-ua opc client plc industrial-automation iiot net8 wrapper</PackageTags>
+	<RepositoryUrl>https://github.com/losapiens/OpcUa.NetBridge</RepositoryUrl>  
+    <RepositoryType>git</RepositoryType>
+	<PackageLicenseExpression>MIT</PackageLicenseExpression>
+	<PackageReleaseNotes>Initial release of OpcUa.NetBridge (forked and modernized from jos-luc/OpcUa.NetBridge). 
+	Upgraded target framework to .NET 8+ and updated OPC Foundation UA-.NETStandard dependencies to v1.5.378+.
+	</PackageReleaseNotes>
+    <Version>1.0.0-beta.1</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
+    <None Include="connection.png" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua" Version="1.5.378.196" />
+    <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua.Client" Version="1.5.378.196" />
+    <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua.Configuration" Version="1.5.378.196" />
+    <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua.Core" Version="1.5.378.196" />
+  </ItemGroup>
+
+</Project>
