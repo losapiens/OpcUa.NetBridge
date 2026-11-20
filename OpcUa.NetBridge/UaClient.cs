@@ -3,6 +3,7 @@ using Opc.Ua.Client;
 using Opc.Ua.Configuration;
 using OpcUa.NetBridge.Exceptions;
 using OpcUa.NetBridge.DTO;
+using System.Net;
 
 namespace OpcUa.NetBridge
 {
@@ -20,36 +21,38 @@ namespace OpcUa.NetBridge
         private const int ReconnectPeriod = 10000;
         private readonly object _lock = new object();
         private SessionReconnectHandler? _reconnectHandler;
+        
+        private ushort _namespaceIndex;
 
         #endregion
 
         #region Private methods
 
-        private void Reconnect(object sender, EventArgs e)
+        private void Reconnect(object? sender, EventArgs e)
         {
-            if (!ReferenceEquals(sender, this._reconnectHandler))
+            if (!ReferenceEquals(sender, _reconnectHandler))
             {
                 return;
             }
 
-            lock (this._lock)
+            lock (_lock)
             {
-                if (this._reconnectHandler.Session != null)
+                if (_reconnectHandler.Session != null)
                 {
                     this._session = (Session)_reconnectHandler.Session;
                 }
 
-                this._reconnectHandler.Dispose();
-                this._reconnectHandler = null;
+                _reconnectHandler.Dispose();
+                _reconnectHandler = null;
             }
         }
 
-        private Subscription Subscription(int miliseconds)
+        private Subscription Subscription(int milliseconds)
         {
-            var subscription = new Subscription()
+            var subscription = new Subscription(new SilentTelemetry())
             {
                 PublishingEnabled = true,
-                PublishingInterval = miliseconds,
+                PublishingInterval = milliseconds,
                 Priority = 1,
                 KeepAliveCount = 10,
                 LifetimeCount = 20,
@@ -59,6 +62,37 @@ namespace OpcUa.NetBridge
             return subscription;
         }
 
+        /// <summary>
+        /// Selects the most suitable endpoint from a collection of OPC UA server endpoints based on the requested security preference.
+        /// </summary>
+        /// <param name="endpoints">The collection of available <see cref="EndpointDescription"/> objects retrieved from the server.</param>
+        /// <param name="useSecurity">If set to <c>true</c>, prioritizes an endpoint with message security enabled; otherwise, prefers an unsecured endpoint.</param>
+        /// <returns>The first matching <see cref="EndpointDescription"/>, or the first available endpoint in the collection as a fallback.</returns>
+        /// <exception cref="ServiceResultException">Thrown when the <paramref name="endpoints"/> collection is null or empty.</exception>
+        private EndpointDescription SelectEndpointFromList(EndpointDescriptionCollection endpoints, bool useSecurity)
+        {
+            if (endpoints == null || endpoints.Count == 0)
+            {
+                throw new ServiceResultException(StatusCodes.BadServerUriInvalid, "No endpoints found on the specified server.");
+            }
+
+            foreach (var endpoint in endpoints)
+            {
+                // If security is required (e.g., Basic256Sha256) and the endpoint security mode is not 'None'
+                if (useSecurity && endpoint.SecurityMode != MessageSecurityMode.None)
+                {
+                    return endpoint;
+                }
+                // If an unsecured connection is requested
+                if (!useSecurity && endpoint.SecurityMode == MessageSecurityMode.None)
+                {
+                    return endpoint;
+                }
+            }
+
+            // Fallback: se non trova corrispondenze esatte, restituisce il primo disponibile
+            return endpoints[0];
+        }
         #endregion
 
         #region Public fields
@@ -66,7 +100,11 @@ namespace OpcUa.NetBridge
         /// <summary>
         /// Indicates if the instance is connected to the server.
         /// </summary>
-        public bool IsConnected => this._session is { Connected: true };
+        public bool IsConnected => _session is { Connected: true };
+        /// <summary>
+        /// Gets the namespace index.
+        /// </summary>
+        public ushort NamespaceIndex => _namespaceIndex;
 
         #endregion
 
@@ -81,6 +119,9 @@ namespace OpcUa.NetBridge
         /// <param name="serverUrl">
         /// Url of server
         /// </param>
+        /// <param name="namespaceIndex">
+        /// Namespace index
+        /// </param>
         /// <param name="security">
         /// Enable or disable the security
         /// </param>
@@ -93,18 +134,21 @@ namespace OpcUa.NetBridge
         /// <param name="password">
         /// Password of the user
         /// </param>
-        public UaClient(String appName, String serverUrl, bool security, bool untrusted, String user = "",
-            String password = "")
+        public UaClient(string appName, string serverUrl, ushort namespaceIndex = 2, bool security = false, bool untrusted=true, string user = "",
+            string password = "")
         {
-            String path = Path.Combine(Directory.GetCurrentDirectory(), "Certificates");
+            string path = Path.Combine(Directory.GetCurrentDirectory(), "Certificates");
             Directory.CreateDirectory(path);
             Directory.CreateDirectory(Path.Combine(path, "Application"));
             Directory.CreateDirectory(Path.Combine(path, "Trusted"));
             Directory.CreateDirectory(Path.Combine(path, "TrustedPeer"));
             Directory.CreateDirectory(Path.Combine(path, "Rejected"));
-            String hostName = System.Net.Dns.GetHostName();
+            string hostName = Dns.GetHostName();
 
-            _userIdentity = user.Length > 0 ? new UserIdentity(user, password) : new UserIdentity();
+            _userIdentity = user.Length > 0
+                ? new UserIdentity(new UserNameIdentityToken { UserName = user, DecryptedPassword = System.Text.Encoding.UTF8.GetBytes(password) })
+                : new UserIdentity();
+            
             _appConfig = new ApplicationConfiguration
             {
                 ApplicationName = appName,
@@ -139,31 +183,49 @@ namespace OpcUa.NetBridge
                 TransportConfigurations = new TransportConfigurationCollection(),
                 TransportQuotas = new TransportQuotas { OperationTimeout = 20000 },
                 ClientConfiguration = new ClientConfiguration { DefaultSessionTimeout = 5000 },
-                TraceConfiguration = new TraceConfiguration
-                {
-                    DeleteOnLoad = true,
-                },
                 DisableHiResClock = false
             };
-            _appConfig.Validate(ApplicationType.Client).GetAwaiter().GetResult();
+            _appConfig.ValidateAsync(ApplicationType.Client).GetAwaiter().GetResult();
 
             if (_appConfig.SecurityConfiguration.AutoAcceptUntrustedCertificates)
             {
                 _appConfig.CertificateValidator.CertificateValidation += (s, ee) => { ee.Accept = (ee.Error.StatusCode == StatusCodes.BadCertificateUntrusted && untrusted); };
             }
 
-            var application = new ApplicationInstance
+            var application = new ApplicationInstance(_appConfig, new SilentTelemetry())
             {
                 ApplicationName = appName,
-                ApplicationType = ApplicationType.Client,
-                ApplicationConfiguration = _appConfig
+                ApplicationType = ApplicationType.Client
             };
-            Utils.SetTraceMask(0);
-            application.CheckApplicationInstanceCertificate(true, 2048).GetAwaiter().GetResult();
+            
+            application.CheckApplicationInstanceCertificatesAsync(true, 2048).GetAwaiter().GetResult();
 
-            var endpointDescription = CoreClientUtils.SelectEndpoint(_appConfig, serverUrl, security);
-            var endpointConfig = EndpointConfiguration.Create(_appConfig);
-            _endpoint = new ConfiguredEndpoint(null, endpointDescription, endpointConfig);
+            using (var discoveryClient = DiscoveryClient.CreateAsync(_appConfig, new Uri(serverUrl)).GetAwaiter().GetResult())
+            {
+                // 1. Retrieve the EndpointDescriptionCollection directly from the server
+                var endpoints = discoveryClient.GetEndpointsAsync(null).GetAwaiter().GetResult();
+
+                // 2. Select the appropriate endpoint based on the 'security' flag using the private helper
+                var endpointDescription = SelectEndpointFromList(endpoints, security);
+
+                // 3. Build the final configured endpoint
+                var endpointConfig = EndpointConfiguration.Create(_appConfig);
+                _endpoint = new ConfiguredEndpoint(null, endpointDescription, endpointConfig);
+            }
+
+            _namespaceIndex = namespaceIndex;
+        }
+
+
+        /// <summary>
+        /// Change the namespace of the connection.
+        /// </summary>
+        /// <param name="namespaceIndex">
+        ///  Index of the namespace
+        /// </param>
+        public void ChangeNamespaceIndex(ushort namespaceIndex)
+        {
+            _namespaceIndex = namespaceIndex;
         }
 
         /// <summary>
@@ -178,16 +240,16 @@ namespace OpcUa.NetBridge
         /// <exception cref="ServerException"></exception>
         public void Connect(uint timeOut = 5, bool keepAlive = false)
         {
-            this.Disconnect();
+            Disconnect();
 
-            this._session =
+            _session =
                 Task.Run(
                     async () => await Session.Create(_appConfig, _endpoint, false, false, _appConfig.ApplicationName,
                         timeOut * 1000, _userIdentity, null)).GetAwaiter().GetResult();
 
             if (keepAlive)
             {
-                this._session.KeepAlive += this.KeepAlive;
+                _session.KeepAlive += KeepAlive;
             }
 
             if (this._session == null || !this._session.Connected)
@@ -229,14 +291,14 @@ namespace OpcUa.NetBridge
             try
             {
                 if (!ServiceResult.IsBad(e.Status)) return;
-                lock (this._lock)
+                lock (_lock)
                 {
-                    if (this._reconnectHandler != null) return;
-                    this._reconnectHandler = new SessionReconnectHandler(true);
-                    this._reconnectHandler.BeginReconnect(this._session, ReconnectPeriod, this.Reconnect);
+                    if (_reconnectHandler != null) return;
+                    _reconnectHandler = new SessionReconnectHandler(true);
+                    _reconnectHandler.BeginReconnect(session, ReconnectPeriod, Reconnect);
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 // ignored
             }
@@ -295,12 +357,12 @@ namespace OpcUa.NetBridge
         /// Value to write
         /// </param>
         /// <exception cref="WriteException"></exception>
-        public void Write(String address, Object value)
+        public void Write(string address, object value)
         {
             WriteValueCollection writeValues = new WriteValueCollection();
             var writeValue = new WriteValue
             {
-                NodeId = new NodeId(address, 2),
+                NodeId = new NodeId(address, _namespaceIndex),
                 AttributeId = Attributes.Value,
                 Value = new DataValue
                 {
@@ -312,7 +374,7 @@ namespace OpcUa.NetBridge
                 out DiagnosticInfoCollection diagnosticInfo);
             if (!StatusCode.IsGood(statusCodes[0]))
             {
-                throw new WriteException("Error writing value. Code: " + statusCodes[0].Code.ToString());
+                throw new WriteException("Error writing value. Code: " + statusCodes[0].Code);
             }
         }
 
@@ -320,7 +382,7 @@ namespace OpcUa.NetBridge
         /// <summary>
         /// Write a value on a tag
         /// </summary>
-        /// <param name="tag"> <see cref="Tag"/></param>
+        /// <param name="tag"> <see cref="DTO.Tag"/></param>
         /// <exception cref="WriteException"></exception>
         public void Write(Tag tag)
         {
@@ -378,13 +440,13 @@ namespace OpcUa.NetBridge
         /// <exception cref="NotSupportedException">
         /// If the type is not supported.
         /// </exception>
-        public TValue Read<TValue>(String address)
+        public TValue Read<TValue>(string address)
         {
             ReadValueIdCollection readValues = new ReadValueIdCollection()
             {
                 new ReadValueId
                 {
-                    NodeId = new NodeId(address, 2),
+                    NodeId = new NodeId(address, _namespaceIndex),
                     AttributeId = Attributes.Value
                 }
             };
@@ -466,7 +528,7 @@ namespace OpcUa.NetBridge
 
             writeValues.AddRange(tags.Select(tag => new WriteValue
             {
-                NodeId = new NodeId(tag.Address, 2),
+                NodeId = new NodeId(tag.Address, _namespaceIndex),
                 AttributeId = Attributes.Value,
                 Value = new DataValue()
                 {
@@ -493,14 +555,14 @@ namespace OpcUa.NetBridge
         /// <returns>
         /// A list of tags <see cref="Tag"/>
         /// </returns>
-        public List<Tag> Read(List<String> address)
+        public List<Tag> Read(List<string> address)
         {
             var tags = new List<Tag>();
 
             ReadValueIdCollection readValues = new ReadValueIdCollection();
             readValues.AddRange(address.Select(a => new ReadValueId
             {
-                NodeId = new NodeId(a, 2),
+                NodeId = new NodeId(a, _namespaceIndex),
                 AttributeId = Attributes.Value
             }));
 
@@ -533,9 +595,9 @@ namespace OpcUa.NetBridge
         /// <param name="monitor">
         /// Function to execute when the value changes.
         /// </param>
-        public void Monitoring(String address, int miliseconds, MonitoredItemNotificationEventHandler monitor)
+        public void Monitoring(string address, int milliseconds, MonitoredItemNotificationEventHandler monitor)
         {
-            var subscription = this.Subscription(miliseconds);
+            var subscription = Subscription(milliseconds);
             MonitoredItem monitored = new MonitoredItem();
             monitored.StartNodeId = new NodeId(address, 2);
             monitored.AttributeId = Attributes.Value;
@@ -592,9 +654,9 @@ namespace OpcUa.NetBridge
         /// Indicates whether to search within group groups
         /// </param>
         /// <returns>
-        /// List of <see cref="Group"/>
+        /// List of <see cref="DTO.Group"/>
         /// </returns>
-        public List<Group> Groups(String address, bool recursive = false)
+        public List<Group> Groups(string address, bool recursive = false)
         {
             var groups = new List<Group>();
             Browser browser = new Browser(this._session)
@@ -631,7 +693,7 @@ namespace OpcUa.NetBridge
         /// <returns>
         /// List of <see cref="Tag"/>
         /// </returns>
-        public List<Tag> Tags(String address)
+        public List<Tag> Tags(string address)
         {
             var tags = new List<Tag>();
             Browser browser = new Browser(this._session)
@@ -732,7 +794,7 @@ namespace OpcUa.NetBridge
         /// <returns>
         /// List of <see cref="Tag"/>
         /// </returns>
-        public Task<List<Tag>> TagsAsync(String address, CancellationToken ct = default)
+        public Task<List<Tag>> TagsAsync(string address, CancellationToken ct = default)
         {
             return Task.Run(() => Tags(address), ct);
         }
@@ -750,7 +812,7 @@ namespace OpcUa.NetBridge
         /// <param name="ct">
         /// Cancellation token
         /// </param>
-        public async Task<Tag> WriteAsync(String address, Object value, CancellationToken ct = default)
+        public async Task<Tag> WriteAsync(string address, object value, CancellationToken ct = default)
         {
             WriteValueCollection writeValues = new WriteValueCollection();
             var writeValue = new WriteValue
@@ -783,7 +845,7 @@ namespace OpcUa.NetBridge
         /// <param name="ct"> Cancellation token</param>
         public Task<Tag> WriteAsync(Tag tag, CancellationToken ct = default)
         {
-            var task = this.WriteAsync(tag.Address, tag.Value, ct);
+            var task = WriteAsync(tag.Address, tag.Value, ct);
 
             return task;
         }
@@ -798,7 +860,6 @@ namespace OpcUa.NetBridge
         public async Task<IEnumerable<Tag>> WriteAsync(List<Tag> tags, CancellationToken ct = default)
         {
             WriteValueCollection writeValues = new WriteValueCollection();
-
 
             writeValues.AddRange(tags.Select(tag => new WriteValue
             {
@@ -925,4 +986,36 @@ namespace OpcUa.NetBridge
 
         #endregion
     }
+
+
+    internal class SilentTelemetry : TelemetryContextBase
+    {
+        public SilentTelemetry() : base(new Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory())
+        {
+        }
+    }
+
+    /// <summary>
+    /// Provides data for the node value variation event in OPC UA.
+    /// Contains the updated information of the monitored tag.
+    /// </summary>
+    /// <remarks>
+    /// Initializes a new instance of the <see cref="TagEventArgs"/> class.
+    /// </remarks>
+    /// <param name="tag">The <see cref="Tag"/> object containing the updated node data.</param>
+    public class TagEventArgs(Tag tag) : EventArgs
+    {
+        /// <summary>
+        /// Gets the updated tag information including address, value, status code, and timestamp.
+        /// </summary>
+        public Tag Tag { get; } = tag;
+    }
+
+    /// <summary>
+    /// Represents the method that will handle the data change notification event for a monitored OPC UA tag.
+    /// </summary>
+    /// <param name="sender">The source of the event, typically the OPC UA client instance.</param>
+    /// <param name="e">A <see cref="TagEventArgs"/> instance containing the updated tag details.</param>
+    public delegate void MonitoredTagNotificationEventHandler(object sender, TagEventArgs e);
+
 }
