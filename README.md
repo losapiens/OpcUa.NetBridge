@@ -6,12 +6,19 @@ Client for OPC UA Server
 
 > **Note:** Based on the original [OpcUa.NetBridge](https://www.nuget.org/packages/OpcUa.NetBridge/) project created by [Joc-Luis](https://github.com/joc-luis/OpcUa.NetBridge).
 
+## Certificates
+
+Certificate stores (`Application`, `Trusted`, `TrustedPeer`, and `Rejected`) are automatically isolated per `ApplicationName` and stored in a secure, writable location depending on the runtime environment (avoiding permission issues on network shares or protected installation folders):
+
+| Environment | Default Base Path |
+| :--- | :--- |
+| **Debug** (Debugger attached) | `<AppContext.BaseDirectory>\<AppName>\Certificates` |
+| **Desktop Application** (Interactive) | `%LOCALAPPDATA%\OpcUa.NetBridge\<AppName>\Certificates` |
+| **Windows Service** (Non-interactive) | `C:\ProgramData\OpcUa.NetBridge\<AppName>\Certificates` *(restricted ACLs)* |
+
+> **Note:** On Windows services, access permissions on the root folder in `C:\ProgramData` are automatically restricted to the service identity and local Administrators to protect private keys. You can also override the default root directory by providing a custom base path in the client configuration.
 
 # TODO...
-
-## Certificates
-The certificates are in the same folder the application executable.
-
 
 ## How to use 
 ### Install

@@ -6,28 +6,44 @@
     <Nullable>enable</Nullable>
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
 	
-	<!-- Metadati del pacchetto (opzionali per GitHub, utili per NuGet) -->
+	<!-- NuGet Package Metadata -->
 	<PackageId>OpcUa.NetBridge</PackageId>
+    <Version>1.0.0-beta.1</Version>
 	<Title>OpcUa.NetBridge</Title>
 	<Product>OpcUa.NetBridge</Product>
-	<Description>A modern .NET 8+ wrapper around the official OPC Foundation stack for simplified read, write, and monitoring operations.</Description>
-	<Authors>Francesco Lo Sapio</Authors>
+	<Authors>Losapiens</Authors>
 	<Company>$(Authors)</Company>
-    <Copyright>Copyright (c) 2026 Francesco Lo Sapio</Copyright>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageIcon>connection.png</PackageIcon>
-	<PackageTags>opcua opc-ua opc client plc industrial-automation iiot net8 wrapper</PackageTags>
+    <Copyright>Copyright (c) 2026 Losapiens</Copyright>
+	<Description>A modern .NET 8+ wrapper around the official OPC Foundation stack for simplified read, write, and monitoring operations.</Description>
+	<PackageTags>opcua;opc-ua;opc;client;plc;industrial-automation;iiot;net8;wrapper</PackageTags>
+
+    <!-- Repository & Source Link -->
 	<RepositoryUrl>https://github.com/losapiens/OpcUa.NetBridge</RepositoryUrl>  
+    <PackageIcon>connection.png</PackageIcon>
     <RepositoryType>git</RepositoryType>
-	<PackageLicenseExpression>MIT</PackageLicenseExpression>
-	<PackageReleaseNotes>Initial release of OpcUa.NetBridge (forked and modernized from jos-luc/OpcUa.NetBridge). 
-	Upgraded target framework to .NET 8+ and updated OPC Foundation UA-.NETStandard dependencies to v1.5.378+.
-	</PackageReleaseNotes>
-    <Version>1.0.0-beta.1</Version>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>  
+
+    <!-- Debug Symbols (.snupkg) & XML Docs -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+
+    <!-- Readme & License -->
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+	<PackageLicenseFile>LICENSE</PackageLicenseFile>
+
+    <PackageReleaseNotes>
+      Initial release of OpcUa.NetBridge targeting .NET 8.0:
+      - Upgraded underlying OPC Foundation .NET Standard stack dependencies to v1.5.378+.
+      - Automatic, permission-safe certificate store resolution for desktop apps, Windows services, and debug sessions
+      - Isolated PKI folders per application name with restricted Windows ACLs
+    </PackageReleaseNotes>
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\README.md" Pack="true" PackagePath="\"  />
+    <None Include="..\LICENSE" Pack="true" PackagePath="\" />
     <None Include="connection.png" Pack="true" PackagePath="\" />
   </ItemGroup>
 

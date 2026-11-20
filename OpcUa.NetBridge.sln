@@ -7,11 +7,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpcUa.NetBridge", "OpcUa.Ne
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpcUa.NetBridge.Tests", "Test\OpcUa.NetBridge.Tests.csproj", "{69934EBF-1DBC-4407-90CA-312DACD8942F}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{685D972F-A3E7-4CC8-96A4-98E43467FFC1}"
-	ProjectSection(SolutionItems) = preProject
-		OpcUa.NetBridge\LICENSE.md = OpcUa.NetBridge\LICENSE.md
-	EndProjectSection
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
