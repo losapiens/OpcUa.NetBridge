@@ -15,7 +15,11 @@ namespace OpcUa.NetBridge
         #region Private Fields
 
         private readonly ConfiguredEndpoint _endpoint;
-        private Session? _session = null;
+        private Session? _session;
+        private ISession ActiveSession => _session ?? throw new ServiceResultException(
+            StatusCodes.BadServerNotConnected,
+            "The OPC UA client is not connected to the server, or the session has been closed.");
+
         private readonly UserIdentity _userIdentity;
         private readonly ApplicationConfiguration _appConfig;
         private const int ReconnectPeriod = 10000;
@@ -137,12 +141,7 @@ namespace OpcUa.NetBridge
         public UaClient(string appName, string serverUrl, ushort namespaceIndex = 2, bool security = false, bool untrusted=true, string user = "",
             string password = "")
         {
-            string path = Path.Combine(Directory.GetCurrentDirectory(), "Certificates");
-            Directory.CreateDirectory(path);
-            Directory.CreateDirectory(Path.Combine(path, "Application"));
-            Directory.CreateDirectory(Path.Combine(path, "Trusted"));
-            Directory.CreateDirectory(Path.Combine(path, "TrustedPeer"));
-            Directory.CreateDirectory(Path.Combine(path, "Rejected"));
+            string path = OpcCertificatePathHelper.InitializeCertificateStores(appName);
             string hostName = Dns.GetHostName();
 
             _userIdentity = user.Length > 0
@@ -267,20 +266,23 @@ namespace OpcUa.NetBridge
         /// <param name="keepAlive">
         /// Sets whether to try to connect to the server in case the connection is lost.
         /// </param>
+        /// <param name="ct">
+        /// Cancellation token
+        /// </param>
         /// <exception cref="ServerException"></exception>
         public async Task ConnectAsync(uint timeOut = 5, bool keepAlive = false, CancellationToken ct = default)
         {
-            await this.DisconnectAsync(ct);
+            await DisconnectAsync(ct);
 
             this._session = await Session.Create(_appConfig, _endpoint, false, false, _appConfig.ApplicationName,
                 timeOut * 1000, _userIdentity, null, ct);
 
             if (keepAlive)
             {
-                this._session.KeepAlive += this.KeepAlive;
+                _session.KeepAlive += KeepAlive;
             }
 
-            if (this._session == null || !this._session.Connected)
+            if (_session == null || !_session.Connected)
             {
                 throw new ServerException("Error creating a session on the server");
             }
@@ -294,7 +296,7 @@ namespace OpcUa.NetBridge
                 lock (_lock)
                 {
                     if (_reconnectHandler != null) return;
-                    _reconnectHandler = new SessionReconnectHandler(true);
+                    _reconnectHandler = new SessionReconnectHandler(new SilentTelemetry(), true);
                     _reconnectHandler.BeginReconnect(session, ReconnectPeriod, Reconnect);
                 }
             }
@@ -309,19 +311,19 @@ namespace OpcUa.NetBridge
         /// </summary>
         public void Disconnect()
         {
-            if (this._session is { Connected: true })
+            if (_session is { Connected: true })
             {
-                if (this._session.Subscriptions != null && this._session.Subscriptions.Any())
+                if (_session.Subscriptions != null && _session.Subscriptions.Any())
                 {
-                    foreach (var subscription in this._session.Subscriptions)
+                    foreach (var subscription in _session.Subscriptions)
                     {
                         subscription.Delete(true);
                     }
                 }
 
-                this._session.Close();
-                this._session.Dispose();
-                this._session = null;
+                _session.Close();
+                _session.Dispose();
+                _session = null;
             }
         }
 
@@ -370,7 +372,7 @@ namespace OpcUa.NetBridge
                 }
             };
             writeValues.Add(writeValue);
-            this._session.Write(null, writeValues, out StatusCodeCollection statusCodes,
+            ActiveSession.Write(null, writeValues, out StatusCodeCollection statusCodes,
                 out DiagnosticInfoCollection diagnosticInfo);
             if (!StatusCode.IsGood(statusCodes[0]))
             {
@@ -399,7 +401,7 @@ namespace OpcUa.NetBridge
         /// <returns>
         /// <see cref="Tag"/>
         /// </returns>
-        public Tag Read(String address)
+        public Tag Read(string address)
         {
             var tag = new Tag
             {
@@ -410,11 +412,11 @@ namespace OpcUa.NetBridge
             {
                 new ReadValueId
                 {
-                    NodeId = new NodeId(address, 2),
+                    NodeId = new NodeId(address, _namespaceIndex),
                     AttributeId = Attributes.Value
                 }
             };
-            this._session.Read(null, 0, TimestampsToReturn.Both, readValues, out DataValueCollection dataValues,
+            ActiveSession.Read(null, 0, TimestampsToReturn.Both, readValues, out DataValueCollection dataValues,
                 out DiagnosticInfoCollection diagnosticInfo);
 
 
@@ -452,67 +454,15 @@ namespace OpcUa.NetBridge
             };
 
 
-            this._session.Read(null, 0, TimestampsToReturn.Both, readValues, out DataValueCollection dataValues,
-                out DiagnosticInfoCollection diagnosticInfo);
-
+            ActiveSession.Read(null, 0, TimestampsToReturn.Both, readValues, out DataValueCollection dataValues,
+                out var diagnosticInfo);
 
             if (dataValues[0].StatusCode != StatusCodes.Good)
             {
                 throw new ReadException(dataValues[0].StatusCode.Code.ToString());
             }
-
-            if (typeof(TValue) == typeof(Boolean))
-            {
-                return (TValue)(object)Convert.ToBoolean(dataValues[0].Value);
-            }
-            else if (typeof(TValue) == typeof(byte))
-            {
-                return (TValue)(object)Convert.ToByte(dataValues[0].Value);
-            }
-            else if (typeof(TValue) == typeof(UInt16))
-            {
-                return (TValue)(object)Convert.ToUInt16(dataValues[0].Value);
-            }
-            else if (typeof(TValue) == typeof(UInt32))
-            {
-                return (TValue)(object)Convert.ToUInt32(dataValues[0].Value);
-            }
-            else if (typeof(TValue) == typeof(UInt64))
-            {
-                return (TValue)(object)Convert.ToUInt64(dataValues[0].Value);
-            }
-            else if (typeof(TValue) == typeof(Int16))
-            {
-                return (TValue)(object)Convert.ToInt16(dataValues[0].Value);
-            }
-            else if (typeof(TValue) == typeof(Int32))
-            {
-                return (TValue)(object)Convert.ToInt32(dataValues[0].Value);
-            }
-            else if (typeof(TValue) == typeof(Int64))
-            {
-                return (TValue)(object)Convert.ToInt64(dataValues[0].Value);
-            }
-            else if (typeof(TValue) == typeof(Single))
-            {
-                return (TValue)(object)Convert.ToSingle(dataValues[0].Value);
-            }
-            else if (typeof(TValue) == typeof(Double))
-            {
-                return (TValue)(object)Convert.ToDouble(dataValues[0].Value);
-            }
-            else if (typeof(TValue) == typeof(Decimal))
-            {
-                return (TValue)(object)Convert.ToDecimal(dataValues[0].Value);
-            }
-            else if (typeof(TValue) == typeof(String))
-            {
-                return (TValue)(object)Convert.ToString(dataValues[0].Value);
-            }
-            else
-            {
-                throw new NotSupportedException();
-            }
+            
+            return (TValue)Convert.ChangeType(dataValues[0].Value, typeof(TValue));
         }
 
 
@@ -535,7 +485,8 @@ namespace OpcUa.NetBridge
                     Value = tag.Value
                 }
             }));
-            this._session.Write(null, writeValues, out StatusCodeCollection statusCodes,
+            
+            ActiveSession.Write(null, writeValues, out StatusCodeCollection statusCodes,
                 out DiagnosticInfoCollection diagnosticInfo);
 
             if (statusCodes.All(StatusCode.IsGood)) return;
@@ -566,7 +517,7 @@ namespace OpcUa.NetBridge
                 AttributeId = Attributes.Value
             }));
 
-            this._session.Read(null, 0, TimestampsToReturn.Both, readValues, out DataValueCollection dataValues,
+            ActiveSession.Read(null, 0, TimestampsToReturn.Both, readValues, out DataValueCollection dataValues,
                 out DiagnosticInfoCollection diagnosticInfo);
 
             for (int i = 0; i < address.Count; i++)
@@ -589,7 +540,7 @@ namespace OpcUa.NetBridge
         /// <param name="address">
         /// Address of the tag
         /// </param>
-        /// <param name="miliseconds">
+        /// <param name="milliseconds">
         /// Sets the time to check changes in the tag
         /// </param>
         /// <param name="monitor">
@@ -603,7 +554,8 @@ namespace OpcUa.NetBridge
             monitored.AttributeId = Attributes.Value;
             monitored.Notification += monitor;
             subscription.AddItem(monitored);
-            this._session.AddSubscription(subscription);
+
+            ActiveSession.AddSubscription(subscription);
             subscription.Create();
             subscription.ApplyChanges();
         }
@@ -659,7 +611,7 @@ namespace OpcUa.NetBridge
         public List<Group> Groups(string address, bool recursive = false)
         {
             var groups = new List<Group>();
-            Browser browser = new Browser(this._session)
+            Browser browser = new Browser(ActiveSession)
             {
                 BrowseDirection = BrowseDirection.Forward,
                 NodeClassMask = (int)NodeClass.Object | (int)NodeClass.Variable,
@@ -696,7 +648,7 @@ namespace OpcUa.NetBridge
         public List<Tag> Tags(string address)
         {
             var tags = new List<Tag>();
-            Browser browser = new Browser(this._session)
+            var browser = new Browser(ActiveSession)
             {
                 BrowseDirection = BrowseDirection.Forward,
                 NodeClassMask = (int)NodeClass.Object | (int)NodeClass.Variable,
@@ -710,7 +662,7 @@ namespace OpcUa.NetBridge
                 {
                     tags.Add(new Tag
                     {
-                        Address = address + "." + result.ToString()
+                        Address = address + "." + result
                     });
                 }
             }
@@ -825,7 +777,7 @@ namespace OpcUa.NetBridge
                 }
             };
             writeValues.Add(writeValue);
-            WriteResponse response = await this._session.WriteAsync(null, writeValues, ct);
+            var response = await ActiveSession.WriteAsync(null, writeValues, ct);
 
             var tag = new Tag()
             {
@@ -859,7 +811,7 @@ namespace OpcUa.NetBridge
         /// </param>
         public async Task<IEnumerable<Tag>> WriteAsync(List<Tag> tags, CancellationToken ct = default)
         {
-            WriteValueCollection writeValues = new WriteValueCollection();
+            var writeValues = new WriteValueCollection();
 
             writeValues.AddRange(tags.Select(tag => new WriteValue
             {
@@ -871,7 +823,7 @@ namespace OpcUa.NetBridge
                 }
             }));
 
-            WriteResponse response = await this._session.WriteAsync(null, writeValues, ct);
+            var response = await ActiveSession.WriteAsync(null, writeValues, ct);
 
             for (int i = 0; i < response.Results.Count; i++)
             {
@@ -894,14 +846,15 @@ namespace OpcUa.NetBridge
         /// <returns>
         /// <see cref="Tag"/>
         /// </returns>
-        public async Task<Tag> ReadAsync(String address, CancellationToken ct = default)
+        public async Task<Tag> ReadAsync(string address, CancellationToken ct = default)
         {
             var tag = new Tag
             {
                 Address = address,
                 Value = null,
             };
-            ReadValueIdCollection readValues = new ReadValueIdCollection()
+
+            var readValues = new ReadValueIdCollection()
             {
                 new ReadValueId
                 {
@@ -910,7 +863,7 @@ namespace OpcUa.NetBridge
                 }
             };
 
-            var dataValues = await this._session.ReadAsync(null, 0, TimestampsToReturn.Both, readValues, ct);
+            var dataValues = await ActiveSession.ReadAsync(null, 0, TimestampsToReturn.Both, readValues, ct);
 
             tag.Value = dataValues.Results[0].Value;
             tag.Code = dataValues.Results[0].StatusCode;
@@ -955,7 +908,7 @@ namespace OpcUa.NetBridge
         /// <returns>
         /// A list of tags <see cref="Tag"/>
         /// </returns>
-        public async Task<IEnumerable<Tag>> ReadAsync(IEnumerable<String> address, CancellationToken ct = default)
+        public async Task<IEnumerable<Tag>> ReadAsync(IEnumerable<string> address, CancellationToken ct = default)
         {
             var tags = new List<Tag>();
 
@@ -967,7 +920,7 @@ namespace OpcUa.NetBridge
             }));
 
             var dataValues =
-                await this._session.ReadAsync(null, 0, TimestampsToReturn.Both, readValues, ct);
+                await ActiveSession.ReadAsync(null, 0, TimestampsToReturn.Both, readValues, ct);
 
             for (int i = 0; i < dataValues.Results.Count; i++)
             {
