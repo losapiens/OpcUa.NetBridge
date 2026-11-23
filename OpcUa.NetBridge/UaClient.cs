@@ -10,9 +10,10 @@ namespace OpcUa.NetBridge
     /// <summary>
     /// Client for OPCUA Server
     /// </summary>
-    public class UaClient
+    public class UaClient : IDisposable, IAsyncDisposable
     {
         #region Private Fields
+        private bool _disposed;
 
         private readonly ConfiguredEndpoint _endpoint;
         private Session? _session;
@@ -950,9 +951,39 @@ namespace OpcUa.NetBridge
             return tags;
         }
 
-        #endregion
+        /// <summary>
+        /// Synchronously disconnects the active OPC UA session and releases all managed resources.
+        /// </summary>
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            Task.Run(() => DisconnectAsync()).GetAwaiter().GetResult();
+            GC.SuppressFinalize(this);
+        }
+
+        /// <summary>
+        /// Asynchronously disconnects the active OPC UA session and releases all managed resources.
+        /// </summary>
+        /// <returns>A <see cref="ValueTask"/> representing the asynchronous dispose operation.</returns>
+        public async ValueTask DisposeAsync()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            await DisconnectAsync();
+            GC.SuppressFinalize(this);
+        }
 
         #endregion
+
     }
 
 
