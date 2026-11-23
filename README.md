@@ -4,7 +4,7 @@ Client for OPC UA Server
 ## Build with
 [OPC UA Foundation](https://github.com/OPCFoundation/UA-.NETStandard) library
 
-> **Note:** Based on the original [OpcUa.NetBridge](https://www.nuget.org/packages/OpcUa.NetBridge/) project created by [Joc-Luis](https://github.com/joc-luis/OpcUa.NetBridge).
+> **Note:** Based on the original [OPCUaClient](https://www.nuget.org/packages/OPCUaClient/) project created by [Joc-Luis](https://github.com/joc-luis/OPCUaClient).
 
 ## Certificates
 

@@ -550,7 +550,7 @@ namespace OpcUa.NetBridge
         {
             var subscription = Subscription(milliseconds);
             MonitoredItem monitored = new MonitoredItem();
-            monitored.StartNodeId = new NodeId(address, 2);
+            monitored.StartNodeId = new NodeId(address, _namespaceIndex);
             monitored.AttributeId = Attributes.Value;
             monitored.Notification += monitor;
             subscription.AddItem(monitored);
@@ -618,7 +618,7 @@ namespace OpcUa.NetBridge
                 ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences
             };
 
-            ReferenceDescriptionCollection browseResults = browser.Browse(new NodeId(address, 2));
+            ReferenceDescriptionCollection browseResults = browser.Browse(new NodeId(address, _namespaceIndex));
 
             foreach (var result in browseResults)
             {
@@ -655,7 +655,7 @@ namespace OpcUa.NetBridge
                 ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences
             };
 
-            ReferenceDescriptionCollection browseResults = browser.Browse(new NodeId(address, 2));
+            ReferenceDescriptionCollection browseResults = browser.Browse(new NodeId(address, _namespaceIndex));
             foreach (var result in browseResults)
             {
                 if (result.NodeClass == NodeClass.Variable)
@@ -769,7 +769,7 @@ namespace OpcUa.NetBridge
             WriteValueCollection writeValues = new WriteValueCollection();
             var writeValue = new WriteValue
             {
-                NodeId = new NodeId(address, 2),
+                NodeId = new NodeId(address, _namespaceIndex),
                 AttributeId = Attributes.Value,
                 Value = new DataValue
                 {
@@ -815,7 +815,7 @@ namespace OpcUa.NetBridge
 
             writeValues.AddRange(tags.Select(tag => new WriteValue
             {
-                NodeId = new NodeId(tag.Address, 2),
+                NodeId = new NodeId(tag.Address, _namespaceIndex),
                 AttributeId = Attributes.Value,
                 Value = new DataValue()
                 {
@@ -858,7 +858,7 @@ namespace OpcUa.NetBridge
             {
                 new ReadValueId
                 {
-                    NodeId = new NodeId(address, 2),
+                    NodeId = new NodeId(address, _namespaceIndex),
                     AttributeId = Attributes.Value
                 }
             };
@@ -915,7 +915,7 @@ namespace OpcUa.NetBridge
             ReadValueIdCollection readValues = new ReadValueIdCollection();
             readValues.AddRange(address.Select(a => new ReadValueId
             {
-                NodeId = new NodeId(a, 2),
+                NodeId = new NodeId(a, _namespaceIndex),
                 AttributeId = Attributes.Value
             }));
 
