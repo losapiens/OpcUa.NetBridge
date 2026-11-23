@@ -32,15 +32,33 @@ namespace OpcUa.NetBridge
 
         #region Private methods
 
+        private void KeepAlive(ISession session, KeepAliveEventArgs e)
+        {
+            try
+            {
+                if (!ServiceResult.IsBad(e.Status)) return;
+                lock (_lock)
+                {
+                    if (_reconnectHandler != null) return;
+                    _reconnectHandler = new SessionReconnectHandler(new SilentTelemetry(), true);
+                    _reconnectHandler.BeginReconnect(session, ReconnectPeriod, Reconnect);
+                }
+            }
+            catch (Exception)
+            {
+                // ignored
+            }
+        }
+
         private void Reconnect(object? sender, EventArgs e)
         {
-            if (!ReferenceEquals(sender, _reconnectHandler))
-            {
-                return;
-            }
-
             lock (_lock)
             {
+                if (!ReferenceEquals(sender, _reconnectHandler) || _reconnectHandler == null)
+                {
+                    return;
+                }
+
                 if (_reconnectHandler.Session != null)
                 {
                     this._session = (Session)_reconnectHandler.Session;
@@ -237,117 +255,21 @@ namespace OpcUa.NetBridge
         /// Sets whether to try to connect to the server in case the connection is lost.
         /// </param>
         /// <exception cref="ServerException"></exception>
+        [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use ConnectAsync() instead.")]
         public void Connect(uint timeOut = 5, bool keepAlive = false)
         {
-            Disconnect();
-
-            _session =
-                Task.Run(
-                    async () => await Session.Create(_appConfig, _endpoint, false, false, _appConfig.ApplicationName,
-                        timeOut * 1000, _userIdentity, null)).GetAwaiter().GetResult();
-
-            if (keepAlive)
-            {
-                _session.KeepAlive += KeepAlive;
-            }
-
-            if (this._session == null || !this._session.Connected)
-            {
-                throw new ServerException("Error creating a session on the server");
-            }
+            Task.Run(() => ConnectAsync(timeOut, keepAlive)).GetAwaiter().GetResult();
         }
 
-        /// <summary>
-        /// Open the connection with the OPC UA Server
-        /// </summary>
-        /// <param name="timeOut">
-        /// Timeout to try to connect with the server in seconds.
-        /// </param>
-        /// <param name="keepAlive">
-        /// Sets whether to try to connect to the server in case the connection is lost.
-        /// </param>
-        /// <param name="ct">
-        /// Cancellation token
-        /// </param>
-        /// <exception cref="ServerException"></exception>
-        public async Task ConnectAsync(uint timeOut = 5, bool keepAlive = false, CancellationToken ct = default)
-        {
-            await DisconnectAsync(ct);
-
-            this._session = await Session.Create(_appConfig, _endpoint, false, false, _appConfig.ApplicationName,
-                timeOut * 1000, _userIdentity, null, ct);
-
-            if (keepAlive)
-            {
-                _session.KeepAlive += KeepAlive;
-            }
-
-            if (_session == null || !_session.Connected)
-            {
-                throw new ServerException("Error creating a session on the server");
-            }
-        }
-
-        private void KeepAlive(ISession session, KeepAliveEventArgs e)
-        {
-            try
-            {
-                if (!ServiceResult.IsBad(e.Status)) return;
-                lock (_lock)
-                {
-                    if (_reconnectHandler != null) return;
-                    _reconnectHandler = new SessionReconnectHandler(new SilentTelemetry(), true);
-                    _reconnectHandler.BeginReconnect(session, ReconnectPeriod, Reconnect);
-                }
-            }
-            catch (Exception)
-            {
-                // ignored
-            }
-        }
-
+ 
         /// <summary>
         /// Close the connection with the OPC UA Server
         /// </summary>
+        [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use DisconnectAsync() instead.")]
         public void Disconnect()
         {
-            if (_session is { Connected: true })
-            {
-                if (_session.Subscriptions != null && _session.Subscriptions.Any())
-                {
-                    foreach (var subscription in _session.Subscriptions)
-                    {
-                        subscription.Delete(true);
-                    }
-                }
-
-                _session.Close();
-                _session.Dispose();
-                _session = null;
-            }
+            Task.Run(() => DisconnectAsync()).GetAwaiter().GetResult();
         }
-
-        /// <summary>
-        /// Close the connection with the OPC UA Server
-        /// </summary>
-        public async Task DisconnectAsync(CancellationToken ct = default)
-        {
-            if (this._session is { Connected: true })
-            {
-                if (this._session.Subscriptions != null && this._session.Subscriptions.Any())
-                {
-                    foreach (var subscription in this._session.Subscriptions)
-                    {
-                        await subscription.DeleteAsync(true, ct);
-                    }
-                }
-
-                await this._session.CloseAsync(ct);
-                this._session.Dispose();
-                this._session = null;
-            }
-        }
-
 
         /// <summary>
         /// Write a value on a tag
@@ -669,9 +591,104 @@ namespace OpcUa.NetBridge
 
             return tags;
         }
-
+        #endregion
 
         #region Async methods
+
+        /// <summary>
+        /// Open the connection with the OPC UA Server
+        /// </summary>
+        /// <param name="timeOut">
+        /// Timeout to try to connect with the server in seconds.
+        /// </param>
+        /// <param name="keepAlive">
+        /// Sets whether to try to connect to the server in case the connection is lost.
+        /// </param>
+        /// <param name="ct">
+        /// Cancellation token
+        /// </param>
+        /// <exception cref="ServerException"></exception>
+        public async Task ConnectAsync(uint timeOut = 5, bool keepAlive = false, CancellationToken ct = default)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
+            await DisconnectAsync(ct);
+
+            // 1. Istanziamo la factory ufficiale passando il contesto di telemetria silenziato
+            ISessionFactory sessionFactory = new DefaultSessionFactory(new SilentTelemetry());
+
+            // 2. Chiamiamo il metodo CreateAsync sulla factory. 
+            // Questa firma accetta esattamente 9 parametri e mappa alla perfezione i tuoi argomenti.
+            var session = await sessionFactory.CreateAsync(
+                _appConfig,
+                _endpoint,
+                false,                             // updateBeforeConnect
+                false,                             // checkDomain
+                _appConfig.ApplicationName,        // sessionName
+                timeOut * 1000,                    // sessionTimeout
+                _userIdentity,                     // identity
+                null,                              // preferredLocales
+                ct                                 // CancellationToken (Parametro 9, pulito!)
+            );
+
+            // 3. Facciamo il cast a Session per mantenere la compatibilità con la variabile di classe di joc-luis
+            _session = (Session)session;
+
+            if (keepAlive)
+            {
+                _session.KeepAlive += KeepAlive;
+            }
+
+            if (_session is not { Connected: true })
+            {
+                throw new ServerException("Error creating a session on the server");
+            }
+        }
+
+        /// <summary>
+        /// Close the connection with the OPC UA Server
+        /// </summary>
+        public async Task DisconnectAsync(CancellationToken ct = default)
+        {
+            // Stop and dispose any active reconnection attempt in a thread-safe manner
+            lock (_lock)
+            {
+                _reconnectHandler?.Dispose();
+                _reconnectHandler = null;
+            }
+
+            if (_session == null)
+            {
+                return;
+            }
+
+            try
+            {
+                // Unsubscribe from KeepAlive to prevent memory leaks
+                _session.KeepAlive -= KeepAlive;
+
+                if (_session.Connected)
+                {
+                    // Delete active subscriptions (iterate over a copy to avoid collection modification errors)
+                    if (_session.Subscriptions != null && _session.Subscriptions.Any())
+                    {
+                        // Copy to a list to avoid modifying the collection while iterating
+                        foreach (var subscription in _session.Subscriptions.ToList())
+                        {
+                            await subscription.DeleteAsync(true, ct);
+                        }
+                    }
+
+                    await _session.CloseAsync(ct);
+                }
+            }
+            finally
+            {
+                // Always release session resources even if already disconnected or if CloseAsync fails
+                _session.Dispose();
+                _session = null;
+            }
+        }
 
         /// <summary>
         /// Scan root folder of OPC UA server and get all devices
@@ -733,7 +750,6 @@ namespace OpcUa.NetBridge
             return Task.Run(() => Groups(address, recursive), ct);
         }
 
-
         /// <summary>
         /// Scan an address and retrieve the tags.
         /// </summary>
@@ -750,7 +766,6 @@ namespace OpcUa.NetBridge
         {
             return Task.Run(() => Tags(address), ct);
         }
-
 
         /// <summary>
         /// Write a value on a tag
