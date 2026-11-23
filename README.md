@@ -31,47 +31,69 @@ dotnet add package OpcUa.NetBridge
  using OpcUa.NetBridge;
 ```
 
+> **Note:** Asynchronous methods (`*Async`) are the standard and recommended way to interact with the server. All synchronous methods are marked as `[Obsolete]` and will be removed in a future release.
 
+### Getting Started
 
-### Create a instance
+#### Create a Client Instance
+```csharp
+// Anonymous authentication
+await using var client = new UaClient("test", "opc.tcp://localhost:52240", true, true);
 
-```cs
- UaClient client = new UaClient("test", "opc.tcp://localhost:52240", true, true);
- 
- UaClient auth = new UaClient("test", "opc.tcp://localhost:52240", true, true, "admin", "password");
-```
-### Create a session on the server
-
-```cs
- int timeOut = 30;
- client.Connect(timeOut, true);
+// Username and password authentication
+await using var authClient = new UaClient("test", "opc.tcp://localhost:52240", true, true, "admin", "password");
 ```
 
+#### Connect and Disconnect
+```csharp
+uint timeOut = 30;
+bool keepAlive = true;
 
-### Close session
+// Open a session on the server
+await client.ConnectAsync(timeOut, keepAlive);
 
-```cs
- client.Disconnect();
+// Perform read/write operations...
+
+// Explicitly close the session (also handled automatically when disposing the client)
+await client.DisconnectAsync();
 ```
 
+---
+### Supported Address Formats
 
-### Read a tag
+All operations (reading, writing, subscriptions, etc.) support three node address formats:
 
-```cs
- Tag tag = client.Read("Device.Counter.OK");
- //Or
- tag = await client.Read("Device.Counter.OK");
+* **String identifier** (uses the configured default namespace): `"Device.Counter.OK"`
+* **Numeric identifier** (uses the configured default namespace): `"1001"`
+* **Raw NodeId** (explicit namespace and identifier type): `"ns=2;s=Device.Counter.OK"` or `"ns=2;i=1001"`
 
- 
- Console.WriteLine($"Name: {tag.Name}");
- Console.WriteLine($"Address: {tag.Address}");
- Console.WriteLine($"Value: {tag.Value}");
- Console.WriteLine($"Quality: {tag.Quality}");
- Console.WriteLine($"Code: {tag.Code}");
- 
- int value = client.Read<int>("Device.Counter.Number");
- value = await client.ReadAsync<int>("Device.Counter.Number");
- 
+---
+
+### Reading Tags
+
+You can read tags either as full `Tag` objects (including metadata such as quality and status code) or directly as strongly-typed values.
+
+#### Read a Full Tag Object
+```csharp
+Tag tag = await client.ReadAsync("Device.Counter.OK");
+
+Console.WriteLine(\$"Name: {tag.Name}");
+Console.WriteLine(\$"Address: {tag.Address}");
+Console.WriteLine(\$"Value: {tag.Value}");
+Console.WriteLine(\$"Quality: {tag.Quality}");
+Console.WriteLine(\$"Code: {tag.Code}");
+```
+
+#### Read a Strongly-Typed Value
+```csharp
+// Using a string identifier
+int value = await client.ReadAsync<int>("Device.Counter.Number");
+
+// Using a numeric identifier
+int numericTag = await client.ReadAsync<int>("1001");
+
+// Using a raw NodeId
+int rawTag = await client.ReadAsync<int>("ns=2;i=1001");
 ```
 
 ### Read multiple tags
@@ -84,9 +106,7 @@ var address = new List<String>
   "Device.Counter.Model",
   "Device.Counter.CycleTime"
 }
-
- var tags = client.Read(address);
- //Or
+ 
  tags await = client.ReadAsync(address);
  
  foreach(var tag in tags)

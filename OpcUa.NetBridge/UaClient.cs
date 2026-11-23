@@ -86,6 +86,36 @@ namespace OpcUa.NetBridge
         }
 
         /// <summary>
+        /// Parses a string address into a native OPC UA <see cref="NodeId"/>, supporting raw NodeId formats, numeric identifiers, and string identifiers.
+        /// </summary>
+        /// <param name="address">The node address (e.g. "ns=2;i=1001", "1001", or "MyTag").</param>
+        /// <returns>A native <see cref="NodeId"/> object.</returns>
+        private NodeId ParseNodeId(string address)
+        {
+            if (string.IsNullOrWhiteSpace(address))
+            {
+                throw new ArgumentException("Node address cannot be null or empty.", nameof(address));
+            }
+
+            if (address.StartsWith("ns=", StringComparison.OrdinalIgnoreCase) ||
+                address.StartsWith("i=", StringComparison.OrdinalIgnoreCase) ||
+                address.StartsWith("s=", StringComparison.OrdinalIgnoreCase) ||
+                address.StartsWith("g=", StringComparison.OrdinalIgnoreCase) ||
+                address.StartsWith("b=", StringComparison.OrdinalIgnoreCase))
+            {
+                return NodeId.Parse(address);
+            }
+
+            if (uint.TryParse(address, out uint numericId))
+            {
+                return new NodeId(numericId, _namespaceIndex);
+            }
+
+            return new NodeId(address, _namespaceIndex);
+        }
+
+
+        /// <summary>
         /// Selects the most suitable endpoint from a collection of OPC UA server endpoints based on the requested security preference.
         /// </summary>
         /// <param name="endpoints">The collection of available <see cref="EndpointDescription"/> objects retrieved from the server.</param>
@@ -116,6 +146,7 @@ namespace OpcUa.NetBridge
             // Fallback: se non trova corrispondenze esatte, restituisce il primo disponibile
             return endpoints[0];
         }
+
         #endregion
 
         #region Public fields
@@ -287,7 +318,7 @@ namespace OpcUa.NetBridge
             WriteValueCollection writeValues = new WriteValueCollection();
             var writeValue = new WriteValue
             {
-                NodeId = new NodeId(address, _namespaceIndex),
+                NodeId = ParseNodeId(address),
                 AttributeId = Attributes.Value,
                 Value = new DataValue
                 {
@@ -335,7 +366,7 @@ namespace OpcUa.NetBridge
             {
                 new ReadValueId
                 {
-                    NodeId = new NodeId(address, _namespaceIndex),
+                    NodeId = ParseNodeId(address),
                     AttributeId = Attributes.Value
                 }
             };
@@ -371,7 +402,7 @@ namespace OpcUa.NetBridge
             {
                 new ReadValueId
                 {
-                    NodeId = new NodeId(address, _namespaceIndex),
+                    NodeId = ParseNodeId(address),
                     AttributeId = Attributes.Value
                 }
             };
@@ -401,7 +432,7 @@ namespace OpcUa.NetBridge
 
             writeValues.AddRange(tags.Select(tag => new WriteValue
             {
-                NodeId = new NodeId(tag.Address, _namespaceIndex),
+                NodeId = ParseNodeId(tag.Address),
                 AttributeId = Attributes.Value,
                 Value = new DataValue()
                 {
@@ -436,7 +467,7 @@ namespace OpcUa.NetBridge
             ReadValueIdCollection readValues = new ReadValueIdCollection();
             readValues.AddRange(address.Select(a => new ReadValueId
             {
-                NodeId = new NodeId(a, _namespaceIndex),
+                NodeId = ParseNodeId(a),
                 AttributeId = Attributes.Value
             }));
 
@@ -472,9 +503,13 @@ namespace OpcUa.NetBridge
         public void Monitoring(string address, int milliseconds, MonitoredItemNotificationEventHandler monitor)
         {
             var subscription = Subscription(milliseconds);
-            MonitoredItem monitored = new MonitoredItem();
-            monitored.StartNodeId = new NodeId(address, _namespaceIndex);
-            monitored.AttributeId = Attributes.Value;
+
+            var monitored = new MonitoredItem
+            {
+                StartNodeId = ParseNodeId(address),
+                AttributeId = Attributes.Value
+            };
+
             monitored.Notification += monitor;
             subscription.AddItem(monitored);
 
@@ -782,10 +817,10 @@ namespace OpcUa.NetBridge
         /// </param>
         public async Task<Tag> WriteAsync(string address, object value, CancellationToken ct = default)
         {
-            WriteValueCollection writeValues = new WriteValueCollection();
+            var writeValues = new WriteValueCollection();
             var writeValue = new WriteValue
             {
-                NodeId = new NodeId(address, _namespaceIndex),
+                NodeId = ParseNodeId(address),
                 AttributeId = Attributes.Value,
                 Value = new DataValue
                 {
@@ -831,7 +866,7 @@ namespace OpcUa.NetBridge
 
             writeValues.AddRange(tags.Select(tag => new WriteValue
             {
-                NodeId = new NodeId(tag.Address, _namespaceIndex),
+                NodeId = ParseNodeId(tag.Address),
                 AttributeId = Attributes.Value,
                 Value = new DataValue()
                 {
@@ -874,7 +909,7 @@ namespace OpcUa.NetBridge
             {
                 new ReadValueId
                 {
-                    NodeId = new NodeId(address, _namespaceIndex),
+                    NodeId = ParseNodeId(address),
                     AttributeId = Attributes.Value
                 }
             };
@@ -931,7 +966,7 @@ namespace OpcUa.NetBridge
             ReadValueIdCollection readValues = new ReadValueIdCollection();
             readValues.AddRange(address.Select(a => new ReadValueId
             {
-                NodeId = new NodeId(a, _namespaceIndex),
+                NodeId = ParseNodeId(a),
                 AttributeId = Attributes.Value
             }));
 
