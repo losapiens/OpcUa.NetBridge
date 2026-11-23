@@ -70,6 +70,84 @@ namespace OpcUa.NetBridge
             }
         }
 
+        private async Task<List<Group>> BrowseGroupsInternalAsync(Browser browser,
+                                                                  NodeId parentNodeId,
+                                                                  bool recursive,
+                                                                  HashSet<NodeId> visited,
+                                                                  CancellationToken ct)
+        {
+            ReferenceDescriptionCollection? browseResults = await browser.BrowseAsync(parentNodeId, ct);
+
+            if (browseResults is not { Count: > 0 })
+            {
+                return [];
+            }
+
+            var groups = new List<Group>();
+
+            foreach (var result in browseResults)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                if (result.NodeClass is not (NodeClass.Object or NodeClass.Variable))
+                {
+                    continue;
+                }
+
+                // Convert ExpandedNodeId to local NodeId BEFORE checking NamespaceIndex
+                NodeId targetNodeId = ExpandedNodeId.ToNodeId(result.NodeId, ActiveSession.NamespaceUris);
+
+                if (NodeId.IsNull(targetNodeId) || targetNodeId.NamespaceIndex == 0)
+                {
+                    continue;
+                }
+
+                // Browse children once to inspect both variables (Tags) and nested structures (Groups)
+                ReferenceDescriptionCollection? children = await browser.BrowseAsync(targetNodeId, ct);
+
+                if (children is not { Count: > 0 })
+                {
+                    continue;
+                }
+
+                var tags = new List<Tag>();
+                bool hasChildObjectsOrStructs = false;
+
+                foreach (var child in children)
+                {
+                    NodeId childNodeId = ExpandedNodeId.ToNodeId(child.NodeId, ActiveSession.NamespaceUris);
+                    if (NodeId.IsNull(childNodeId) || childNodeId.NamespaceIndex == 0)
+                    {
+                        continue;
+                    }
+
+                    if (child.NodeClass == NodeClass.Variable)
+                    {
+                        tags.Add(new Tag { Address = childNodeId.ToString() });
+                    }
+
+                    // Recurse only if the child is an Object (folder) or a non-built-in Variable (potential UDT/struct)
+                    if (child.NodeClass == NodeClass.Object || child.TypeDefinition != VariableTypeIds.BaseDataVariableType)
+                    {
+                        hasChildObjectsOrStructs = true;
+                    }
+                }
+
+                var group = new Group
+                {
+                    Address = targetNodeId.ToString(),
+                    Tags = tags,
+                    Groups = (recursive && hasChildObjectsOrStructs && visited.Add(targetNodeId))
+                        ? await BrowseGroupsInternalAsync(browser, targetNodeId, true, visited, ct)
+                        : []
+                };
+
+                groups.Add(group);
+            }
+
+            return groups;
+        }
+
         private Subscription Subscription(int milliseconds)
         {
             var subscription = new Subscription(new SilentTelemetry())
@@ -293,7 +371,7 @@ namespace OpcUa.NetBridge
             Task.Run(() => ConnectAsync(timeOut, keepAlive)).GetAwaiter().GetResult();
         }
 
- 
+
         /// <summary>
         /// Close the connection with the OPC UA Server
         /// </summary>
@@ -302,6 +380,7 @@ namespace OpcUa.NetBridge
         {
             Task.Run(() => DisconnectAsync()).GetAwaiter().GetResult();
         }
+
 
         /// <summary>
         /// Write a value on a tag
@@ -313,6 +392,7 @@ namespace OpcUa.NetBridge
         /// Value to write
         /// </param>
         /// <exception cref="WriteException"></exception>
+        [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use WriteAsync() instead.")]
         public void Write(string address, object value)
         {
             WriteValueCollection writeValues = new WriteValueCollection();
@@ -340,14 +420,15 @@ namespace OpcUa.NetBridge
         /// </summary>
         /// <param name="tag"> <see cref="DTO.Tag"/></param>
         /// <exception cref="WriteException"></exception>
+        [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use WriteAsync() instead.")]
         public void Write(Tag tag)
         {
-            this.Write(tag.Address, tag.Value);
+            WriteAsync(tag.Address, tag.Value).GetAwaiter().GetResult();
         }
 
 
         /// <summary>
-        /// Read a tag of the sepecific address
+        /// Read a tag of the specific address
         /// </summary>
         /// <param name="address">
         /// Address of the tag
@@ -355,6 +436,7 @@ namespace OpcUa.NetBridge
         /// <returns>
         /// <see cref="Tag"/>
         /// </returns>
+        [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use ReadAsync() instead.")]
         public Tag Read(string address)
         {
             var tag = new Tag
@@ -396,6 +478,7 @@ namespace OpcUa.NetBridge
         /// <exception cref="NotSupportedException">
         /// If the type is not supported.
         /// </exception>
+        [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use ReadAsync() instead.")]
         public TValue Read<TValue>(string address)
         {
             ReadValueIdCollection readValues = new ReadValueIdCollection()
@@ -425,10 +508,10 @@ namespace OpcUa.NetBridge
         /// </summary>
         /// <param name="tags"> <see cref="Tag"/></param>
         /// <exception cref="WriteException"></exception>
+        [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use WriteAsync() instead.")]
         public void Write(List<Tag> tags)
         {
             WriteValueCollection writeValues = new WriteValueCollection();
-
 
             writeValues.AddRange(tags.Select(tag => new WriteValue
             {
@@ -460,6 +543,7 @@ namespace OpcUa.NetBridge
         /// <returns>
         /// A list of tags <see cref="Tag"/>
         /// </returns>
+        [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use ReadAsync() instead.")]
         public List<Tag> Read(List<string> address)
         {
             var tags = new List<Tag>();
@@ -500,6 +584,7 @@ namespace OpcUa.NetBridge
         /// <param name="monitor">
         /// Function to execute when the value changes.
         /// </param>
+        [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use MonitoringAsync() instead.")]
         public void Monitoring(string address, int milliseconds, MonitoredItemNotificationEventHandler monitor)
         {
             var subscription = Subscription(milliseconds);
@@ -528,6 +613,7 @@ namespace OpcUa.NetBridge
         /// <returns>
         /// List of <see cref="Device"/>
         /// </returns>
+        [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use DevicesAsync() instead.")]
         public List<Device> Devices(bool recursive = false)
         {
             Browser browser = new Browser(this._session)
@@ -566,6 +652,7 @@ namespace OpcUa.NetBridge
         /// <returns>
         /// List of <see cref="DTO.Group"/>
         /// </returns>
+        [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use GroupsAsync() instead.")]
         public List<Group> Groups(string address, bool recursive = false)
         {
             var groups = new List<Group>();
@@ -585,8 +672,8 @@ namespace OpcUa.NetBridge
                 {
                     Address = address + "." + result.ToString()
                 };
-                group.Groups = this.Groups(group.Address, recursive);
-                group.Tags = this.Tags(group.Address);
+                group.Groups = Groups(group.Address, recursive);
+                group.Tags = Tags(group.Address);
                 groups.Add(group);
             }
 
@@ -603,6 +690,7 @@ namespace OpcUa.NetBridge
         /// <returns>
         /// List of <see cref="Tag"/>
         /// </returns>
+        [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use TagsAsync() instead.")]
         public List<Tag> Tags(string address)
         {
             var tags = new List<Tag>();
@@ -613,7 +701,7 @@ namespace OpcUa.NetBridge
                 ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences
             };
 
-            ReferenceDescriptionCollection browseResults = browser.Browse(new NodeId(address, _namespaceIndex));
+            var browseResults = browser.BrowseAsync(ParseNodeId(address)).GetAwaiter().GetResult();
             foreach (var result in browseResults)
             {
                 if (result.NodeClass == NodeClass.Variable)
@@ -738,31 +826,35 @@ namespace OpcUa.NetBridge
         /// <returns>
         /// List of <see cref="Device"/>
         /// </returns>
-        public Task<List<Device>> DevicesAsync(bool recursive = false, CancellationToken ct = default)
+        public async Task<List<Device>> DevicesAsync(bool recursive = false, CancellationToken ct = default)
         {
-            return Task.Run(() =>
+            Browser browser = new Browser(ActiveSession)
             {
-                Browser browser = new Browser(this._session)
-                {
-                    BrowseDirection = BrowseDirection.Forward,
-                    NodeClassMask = (int)NodeClass.Object | (int)NodeClass.Variable,
-                    ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences
-                };
+                BrowseDirection = BrowseDirection.Forward,
+                NodeClassMask = (int)NodeClass.Object | (int)NodeClass.Variable,
+                ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences
+            };
 
-                ReferenceDescriptionCollection browseResults = browser.Browse(Opc.Ua.ObjectIds.ObjectsFolder);
+            // Execute the browse operation asynchronously
+            ReferenceDescriptionCollection browseResults = await browser.BrowseAsync(ObjectIds.ObjectsFolder);
 
-                var devices = browseResults.Where(d => d.ToString() != "Server").Select(b => new Device
-                {
-                    Address = b.ToString()
-                }).ToList();
+            // Filter out system nodes (NamespaceIndex == 0) to avoid processing system/server objects
+            var devices = browseResults
+                 .Where(d => d.NodeId.NamespaceIndex != 0).Select(b => new Device
+                 {
+                     Address = b.NodeId.ToString(),
+                     Name = b.DisplayName.Text
+                 }).ToList();
 
-                devices.ForEach(d =>
-                {
-                    d.Groups = this.Groups(d.Address, recursive);
-                    d.Tags = this.Tags(d.Address);
-                });
-                return devices;
-            }, ct);
+            foreach (var d in devices)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                d.Groups = await GroupsAsync(d.Address, recursive, ct);
+                d.Tags = await TagsAsync(d.Address, ct);
+            }
+
+            return devices;
         }
 
 
@@ -781,9 +873,19 @@ namespace OpcUa.NetBridge
         /// <returns>
         /// List of <see cref="Group"/>
         /// </returns>
-        public Task<List<Group>> GroupsAsync(String address, bool recursive = false, CancellationToken ct = default)
+        public async Task<List<Group>> GroupsAsync(string address, bool recursive = false, CancellationToken ct = default)
         {
-            return Task.Run(() => Groups(address, recursive), ct);
+            var rootNodeId = ParseNodeId(address);
+            var visited = new HashSet<NodeId> { rootNodeId };
+
+            var browser = new Browser(ActiveSession)
+            {
+                BrowseDirection = BrowseDirection.Forward,
+                NodeClassMask = (int)NodeClass.Object | (int)NodeClass.Variable,
+                ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences
+            };
+
+            return await BrowseGroupsInternalAsync(browser, rootNodeId, recursive, visited, ct);
         }
 
         /// <summary>
@@ -798,10 +900,51 @@ namespace OpcUa.NetBridge
         /// <returns>
         /// List of <see cref="Tag"/>
         /// </returns>
-        public Task<List<Tag>> TagsAsync(string address, CancellationToken ct = default)
+        public async Task<List<Tag>> TagsAsync(string address, CancellationToken ct = default)
         {
-            return Task.Run(() => Tags(address), ct);
+            // Parse the node ID and execute the browse operation asynchronously
+            var nodeId = ParseNodeId(address);
+            
+            //var tags = new List<Tag>();
+            var browser = new Browser(ActiveSession)
+            {
+                BrowseDirection = BrowseDirection.Forward,
+                //NodeClassMask = (int)NodeClass.Object | (int)NodeClass.Variable,
+                NodeClassMask = (int)NodeClass.Variable,
+                ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences
+            };
+
+            ReferenceDescriptionCollection? browseResults = await browser.BrowseAsync(nodeId, ct);
+
+            if (browseResults is not { Count: > 0 })
+            {
+                return [];
+            }
+
+            var tags = new List<Tag>(browseResults.Count);
+
+            foreach (var result in browseResults)
+            {
+                // Abort operations if cancellation has been requested
+                ct.ThrowIfCancellationRequested();
+
+                // Convert ExpandedNodeId to standard NodeId safely using the session's namespace table
+                NodeId targetNodeId = ExpandedNodeId.ToNodeId(result.NodeId, ActiveSession.NamespaceUris);
+
+                // Skip standard system nodes (NamespaceIndex == 0) and filter for variables only
+                if (targetNodeId.NamespaceIndex != 0 && result.NodeClass == NodeClass.Variable)
+                {
+                    tags.Add(new Tag
+                    {
+                        //Name = result.DisplayName?.Text ?? result.BrowseName?.Name,
+                        Address = targetNodeId.ToString()
+                    });
+                }
+            }
+
+            return tags;
         }
+
 
         /// <summary>
         /// Write a value on a tag
@@ -899,6 +1042,8 @@ namespace OpcUa.NetBridge
         /// </returns>
         public async Task<Tag> ReadAsync(string address, CancellationToken ct = default)
         {
+            var nodeId = ParseNodeId(address);
+
             var tag = new Tag
             {
                 Address = address,
@@ -909,15 +1054,19 @@ namespace OpcUa.NetBridge
             {
                 new ReadValueId
                 {
-                    NodeId = ParseNodeId(address),
+                    NodeId = nodeId,
                     AttributeId = Attributes.Value
                 }
             };
 
             var dataValues = await ActiveSession.ReadAsync(null, 0, TimestampsToReturn.Both, readValues, ct);
 
-            tag.Value = dataValues.Results[0].Value;
-            tag.Code = dataValues.Results[0].StatusCode;
+            // Verify that results are not null and contain data before accessing index 0
+            if (dataValues?.Results is [var firstResult, ..])
+            {
+                tag.Value = firstResult.Value;
+                tag.Code = firstResult.StatusCode;
+            }
 
             return tag;
         }
@@ -941,9 +1090,26 @@ namespace OpcUa.NetBridge
         /// <exception cref="NotSupportedException">
         /// If the type is not supported.
         /// </exception>
-        public Task<TValue> ReadAsync<TValue>(String address, CancellationToken ct = default)
+        public async Task<TValue> ReadAsync<TValue>(string address, CancellationToken ct = default)
         {
-            return Task.Run(() => Read<TValue>(address), ct);
+            var tag = await ReadAsync(address, ct);
+
+            if (StatusCode.IsNotGood(tag.Code))
+            {
+                throw new ReadException(tag.Code.Code.ToString());
+            }
+
+            if (tag.Value is TValue typedValue)
+            {
+                return typedValue;
+            }
+
+            if (tag.Value is null)
+            {
+                return default!;
+            }
+
+            return (TValue)Convert.ChangeType(tag.Value, typeof(TValue));
         }
 
 
@@ -961,30 +1127,32 @@ namespace OpcUa.NetBridge
         /// </returns>
         public async Task<IEnumerable<Tag>> ReadAsync(IEnumerable<string> address, CancellationToken ct = default)
         {
-            var tags = new List<Tag>();
+            IList<string> addressList = address as IList<string> ?? address?.ToList() ?? [];
 
-            ReadValueIdCollection readValues = new ReadValueIdCollection();
-            readValues.AddRange(address.Select(a => new ReadValueId
+            if (addressList.Count == 0)
+                return [];
+
+            var readValues = new ReadValueIdCollection(addressList.Count);
+            readValues.AddRange(addressList.Select(a => new ReadValueId
             {
                 NodeId = ParseNodeId(a),
                 AttributeId = Attributes.Value
             }));
 
-            var dataValues =
-                await ActiveSession.ReadAsync(null, 0, TimestampsToReturn.Both, readValues, ct);
+            var dataValues = await ActiveSession.ReadAsync(null, 0, TimestampsToReturn.Both, readValues, ct);
 
-            for (int i = 0; i < dataValues.Results.Count; i++)
-            {
-                tags.Add(new Tag
+            if (dataValues?.Results is null)
+                return [];
+
+            return [.. dataValues.Results.Select((t, i) => new Tag
                 {
-                    Address = address.ToArray()[i],
-                    Value = dataValues.Results[i].Value,
-                    Code = dataValues.Results[i].StatusCode
-                });
-            }
-
-            return tags;
+                    Address = addressList[i],
+                    Value = t.Value,
+                    Code = t.StatusCode
+                })];
         }
+
+        #endregion
 
         /// <summary>
         /// Synchronously disconnects the active OPC UA session and releases all managed resources.
@@ -1017,7 +1185,6 @@ namespace OpcUa.NetBridge
             GC.SuppressFinalize(this);
         }
 
-        #endregion
 
     }
 
