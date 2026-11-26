@@ -191,8 +191,7 @@ namespace OpcUa.NetBridge
 
             return new NodeId(address, _namespaceIndex);
         }
-
-
+        
         /// <summary>
         /// Selects the most suitable endpoint from a collection of OPC UA server endpoints based on the requested security preference.
         /// </summary>
@@ -371,7 +370,6 @@ namespace OpcUa.NetBridge
             Task.Run(() => ConnectAsync(timeOut, keepAlive)).GetAwaiter().GetResult();
         }
 
-
         /// <summary>
         /// Close the connection with the OPC UA Server
         /// </summary>
@@ -380,52 +378,6 @@ namespace OpcUa.NetBridge
         {
             Task.Run(() => DisconnectAsync()).GetAwaiter().GetResult();
         }
-
-
-        /// <summary>
-        /// Write a value on a tag
-        /// </summary>
-        /// <param name="address">
-        /// Address of the tag
-        /// </param>
-        /// <param name="value">
-        /// Value to write
-        /// </param>
-        /// <exception cref="WriteException"></exception>
-        [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use WriteAsync() instead.")]
-        public void Write(string address, object value)
-        {
-            WriteValueCollection writeValues = new WriteValueCollection();
-            var writeValue = new WriteValue
-            {
-                NodeId = ParseNodeId(address),
-                AttributeId = Attributes.Value,
-                Value = new DataValue
-                {
-                    Value = value
-                }
-            };
-            writeValues.Add(writeValue);
-            ActiveSession.Write(null, writeValues, out StatusCodeCollection statusCodes,
-                out DiagnosticInfoCollection diagnosticInfo);
-            if (!StatusCode.IsGood(statusCodes[0]))
-            {
-                throw new WriteException("Error writing value. Code: " + statusCodes[0].Code);
-            }
-        }
-
-
-        /// <summary>
-        /// Write a value on a tag
-        /// </summary>
-        /// <param name="tag"> <see cref="DTO.Tag"/></param>
-        /// <exception cref="WriteException"></exception>
-        [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use WriteAsync() instead.")]
-        public void Write(Tag tag)
-        {
-            WriteAsync(tag.Address, tag.Value).GetAwaiter().GetResult();
-        }
-
 
         /// <summary>
         /// Read a tag of the specific address
@@ -439,28 +391,8 @@ namespace OpcUa.NetBridge
         [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use ReadAsync() instead.")]
         public Tag Read(string address)
         {
-            var tag = new Tag
-            {
-                Address = address,
-                Value = null,
-            };
-            ReadValueIdCollection readValues = new ReadValueIdCollection()
-            {
-                new ReadValueId
-                {
-                    NodeId = ParseNodeId(address),
-                    AttributeId = Attributes.Value
-                }
-            };
-            ActiveSession.Read(null, 0, TimestampsToReturn.Both, readValues, out DataValueCollection dataValues,
-                out DiagnosticInfoCollection diagnosticInfo);
-
-
-            tag.Value = dataValues[0].Value;
-            tag.Code = dataValues[0].StatusCode;
-            return tag;
+            return Task.Run(() => ReadAsync(address)).GetAwaiter().GetResult();
         }
-
 
         /// <summary>
         /// Read an address
@@ -481,58 +413,8 @@ namespace OpcUa.NetBridge
         [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use ReadAsync() instead.")]
         public TValue Read<TValue>(string address)
         {
-            ReadValueIdCollection readValues = new ReadValueIdCollection()
-            {
-                new ReadValueId
-                {
-                    NodeId = ParseNodeId(address),
-                    AttributeId = Attributes.Value
-                }
-            };
-
-
-            ActiveSession.Read(null, 0, TimestampsToReturn.Both, readValues, out DataValueCollection dataValues,
-                out var diagnosticInfo);
-
-            if (dataValues[0].StatusCode != StatusCodes.Good)
-            {
-                throw new ReadException(dataValues[0].StatusCode.Code.ToString());
-            }
-            
-            return (TValue)Convert.ChangeType(dataValues[0].Value, typeof(TValue));
+            return Task.Run(() => ReadAsync<TValue>(address)).GetAwaiter().GetResult();
         }
-
-
-        /// <summary>
-        /// Write a lis of values
-        /// </summary>
-        /// <param name="tags"> <see cref="Tag"/></param>
-        /// <exception cref="WriteException"></exception>
-        [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use WriteAsync() instead.")]
-        public void Write(List<Tag> tags)
-        {
-            WriteValueCollection writeValues = new WriteValueCollection();
-
-            writeValues.AddRange(tags.Select(tag => new WriteValue
-            {
-                NodeId = ParseNodeId(tag.Address),
-                AttributeId = Attributes.Value,
-                Value = new DataValue()
-                {
-                    Value = tag.Value
-                }
-            }));
-            
-            ActiveSession.Write(null, writeValues, out StatusCodeCollection statusCodes,
-                out DiagnosticInfoCollection diagnosticInfo);
-
-            if (statusCodes.All(StatusCode.IsGood)) return;
-            {
-                var status = statusCodes.First(sc => !StatusCode.IsGood(sc));
-                throw new WriteException("Error writing value. Code: " + status.Code.ToString());
-            }
-        }
-
 
         /// <summary>
         /// Read a list of tags on the OPCUA Server
@@ -546,31 +428,46 @@ namespace OpcUa.NetBridge
         [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use ReadAsync() instead.")]
         public List<Tag> Read(List<string> address)
         {
-            var tags = new List<Tag>();
-
-            ReadValueIdCollection readValues = new ReadValueIdCollection();
-            readValues.AddRange(address.Select(a => new ReadValueId
-            {
-                NodeId = ParseNodeId(a),
-                AttributeId = Attributes.Value
-            }));
-
-            ActiveSession.Read(null, 0, TimestampsToReturn.Both, readValues, out DataValueCollection dataValues,
-                out DiagnosticInfoCollection diagnosticInfo);
-
-            for (int i = 0; i < address.Count; i++)
-            {
-                tags.Add(new Tag
-                {
-                    Address = address[i],
-                    Value = dataValues[i].Value,
-                    Code = dataValues[i].StatusCode
-                });
-            }
-
-            return tags;
+            return Task.Run(() => ReadAsync(address)).GetAwaiter().GetResult().ToList();
         }
 
+        /// <summary>
+        /// Write a value on a tag
+        /// </summary>
+        /// <param name="address">
+        /// Address of the tag
+        /// </param>
+        /// <param name="value">
+        /// Value to write
+        /// </param>
+        /// <exception cref="WriteException"></exception>
+        [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use WriteAsync() instead.")]
+        public void Write(string address, object value)
+        {
+            Task.Run(() => WriteAsync(address, value)).GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Write a value on a tag
+        /// </summary>
+        /// <param name="tag"> <see cref="DTO.Tag"/></param>
+        /// <exception cref="WriteException"></exception>
+        [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use WriteAsync() instead.")]
+        public void Write(Tag tag)
+        {
+            Task.Run(() => WriteAsync(tag.Address, tag.Value!)).GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Write a lis of values
+        /// </summary>
+        /// <param name="tags"> <see cref="Tag"/></param>
+        /// <exception cref="WriteException"></exception>
+        [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use WriteAsync() instead.")]
+        public void Write(List<Tag> tags)
+        {
+            Task.Run(() => WriteAsync(tags)).GetAwaiter().GetResult();
+        }
 
         /// <summary>
         /// Monitoring a tag and execute a function when the value change
@@ -602,7 +499,6 @@ namespace OpcUa.NetBridge
             subscription.Create();
             subscription.ApplyChanges();
         }
-
 
         /// <summary>
         /// Scan root folder of OPC UA server and get all devices
@@ -735,7 +631,7 @@ namespace OpcUa.NetBridge
         public async Task ConnectAsync(uint timeOut = 5, bool keepAlive = false, CancellationToken ct = default)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-
+            
             await DisconnectAsync(ct);
 
             // 1. Istanziamo la factory ufficiale passando il contesto di telemetria silenziato
@@ -945,88 +841,44 @@ namespace OpcUa.NetBridge
             return tags;
         }
 
-
         /// <summary>
-        /// Write a value on a tag
+        /// Read a list of tags on the OPCUA Server
         /// </summary>
         /// <param name="address">
-        /// Address of the tag
-        /// </param>
-        /// <param name="value">
-        /// Value to write
+        /// List of address to read.
         /// </param>
         /// <param name="ct">
         /// Cancellation token
         /// </param>
-        public async Task<Tag> WriteAsync(string address, object value, CancellationToken ct = default)
+        /// <returns>
+        /// A list of tags <see cref="Tag"/>
+        /// </returns>
+        public async Task<IEnumerable<Tag>> ReadAsync(IEnumerable<string> address, CancellationToken ct = default)
         {
-            var writeValues = new WriteValueCollection();
-            var writeValue = new WriteValue
+            IList<string> addressList = address as IList<string> ?? address?.ToList() ?? [];
+
+            if (addressList.Count == 0)
+                return [];
+
+            var readValues = new ReadValueIdCollection(addressList.Count);
+            readValues.AddRange(addressList.Select(a => new ReadValueId
             {
-                NodeId = ParseNodeId(address),
-                AttributeId = Attributes.Value,
-                Value = new DataValue
-                {
-                    Value = value
-                }
-            };
-            writeValues.Add(writeValue);
-            var response = await ActiveSession.WriteAsync(null, writeValues, ct);
-
-            var tag = new Tag()
-            {
-                Address = address,
-                Value = value,
-                Code = response.Results[0].Code
-            };
-
-            return tag;
-        }
-
-
-        /// <summary>
-        /// Write a value on a tag
-        /// </summary>
-        /// <param name="tag"> <see cref="Tag"/></param>
-        /// <param name="ct"> Cancellation token</param>
-        public Task<Tag> WriteAsync(Tag tag, CancellationToken ct = default)
-        {
-            var task = WriteAsync(tag.Address, tag.Value, ct);
-
-            return task;
-        }
-
-        /// <summary>
-        /// Write a lis of values
-        /// </summary>
-        /// <param name="tags"><see cref="Tag"/></param>
-        /// <param name="ct">
-        /// Cancellation token
-        /// </param>
-        public async Task<IEnumerable<Tag>> WriteAsync(List<Tag> tags, CancellationToken ct = default)
-        {
-            var writeValues = new WriteValueCollection();
-
-            writeValues.AddRange(tags.Select(tag => new WriteValue
-            {
-                NodeId = ParseNodeId(tag.Address),
-                AttributeId = Attributes.Value,
-                Value = new DataValue()
-                {
-                    Value = tag.Value
-                }
+                NodeId = ParseNodeId(a),
+                AttributeId = Attributes.Value
             }));
 
-            var response = await ActiveSession.WriteAsync(null, writeValues, ct);
+            var dataValues = await ActiveSession.ReadAsync(null, 0, TimestampsToReturn.Both, readValues, ct);
 
-            for (int i = 0; i < response.Results.Count; i++)
-            {
-                tags[i].Code = response.Results[i].Code;
-            }
+            if (dataValues?.Results is null)
+                return [];
 
-            return tags;
+            return [.. dataValues.Results.Select((t, i) => new Tag
+                {
+                    Address = addressList[i],
+                    Value = t.Value,
+                    Code = t.StatusCode
+                })];
         }
-
 
         /// <summary>
         /// Read a tag of the specific address
@@ -1042,33 +894,12 @@ namespace OpcUa.NetBridge
         /// </returns>
         public async Task<Tag> ReadAsync(string address, CancellationToken ct = default)
         {
-            var nodeId = ParseNodeId(address);
-
-            var tag = new Tag
+            var results = await ReadAsync([address], ct);
+            return results.FirstOrDefault() ?? new Tag
             {
                 Address = address,
-                Value = null,
+                Value = null
             };
-
-            var readValues = new ReadValueIdCollection()
-            {
-                new ReadValueId
-                {
-                    NodeId = nodeId,
-                    AttributeId = Attributes.Value
-                }
-            };
-
-            var dataValues = await ActiveSession.ReadAsync(null, 0, TimestampsToReturn.Both, readValues, ct);
-
-            // Verify that results are not null and contain data before accessing index 0
-            if (dataValues?.Results is [var firstResult, ..])
-            {
-                tag.Value = firstResult.Value;
-                tag.Code = firstResult.StatusCode;
-            }
-
-            return tag;
         }
 
         /// <summary>
@@ -1112,48 +943,96 @@ namespace OpcUa.NetBridge
             return (TValue)Convert.ChangeType(tag.Value, typeof(TValue));
         }
 
-
         /// <summary>
-        /// Read a list of tags on the OPCUA Server
+        /// Write a lis of values
         /// </summary>
-        /// <param name="address">
-        /// List of address to read.
-        /// </param>
+        /// <param name="tags"><see cref="Tag"/></param>
         /// <param name="ct">
-        ///  Cancellation token
+        /// Cancellation token
         /// </param>
-        /// <returns>
-        /// A list of tags <see cref="Tag"/>
-        /// </returns>
-        public async Task<IEnumerable<Tag>> ReadAsync(IEnumerable<string> address, CancellationToken ct = default)
+        public async Task<IEnumerable<Tag>> WriteAsync(IEnumerable<Tag> tags, CancellationToken ct = default)
         {
-            IList<string> addressList = address as IList<string> ?? address?.ToList() ?? [];
+            IList<Tag> tagList = tags as IList<Tag> ?? tags?.ToList() ?? [];
 
-            if (addressList.Count == 0)
+            if (tagList.Count == 0)
                 return [];
 
-            var readValues = new ReadValueIdCollection(addressList.Count);
-            readValues.AddRange(addressList.Select(a => new ReadValueId
+            var writeValues = new WriteValueCollection(tagList.Count);
+            writeValues.AddRange(tagList.Select(tag => new WriteValue
             {
-                NodeId = ParseNodeId(a),
-                AttributeId = Attributes.Value
+                NodeId = ParseNodeId(tag.Address),
+                AttributeId = Attributes.Value,
+                Value = new DataValue()
+                {
+                    Value = tag.Value
+                }
             }));
 
-            var dataValues = await ActiveSession.ReadAsync(null, 0, TimestampsToReturn.Both, readValues, ct);
+            var response = await ActiveSession.WriteAsync(null, writeValues, ct);
 
-            if (dataValues?.Results is null)
+            if (response?.Results is null)
                 return [];
 
-            return [.. dataValues.Results.Select((t, i) => new Tag
+            return [.. tagList.Select((t, i) => new Tag
+            {
+                Address = t.Address,
+                Value = t.Value,
+                Code = i < response.Results.Count ? response.Results[i] : StatusCodes.BadUnexpectedError
+            })];
+        }
+
+        /// <summary>
+        /// Write a value on a tag
+        /// </summary>
+        /// <param name="address">
+        /// Address of the tag
+        /// </param>
+        /// <param name="value">
+        /// Value to write
+        /// </param>
+        /// <param name="ct">
+        /// Cancellation token
+        /// </param>
+        public async Task<Tag> WriteAsync(string address, object value, CancellationToken ct = default)
+        {
+            var writeValues = new WriteValueCollection();
+            var writeValue = new WriteValue
+            {
+                NodeId = ParseNodeId(address),
+                AttributeId = Attributes.Value,
+                Value = new DataValue
                 {
-                    Address = addressList[i],
-                    Value = t.Value,
-                    Code = t.StatusCode
-                })];
+                    Value = value
+                }
+            };
+            writeValues.Add(writeValue);
+            var response = await ActiveSession.WriteAsync(null, writeValues, ct);
+
+            var tag = new Tag()
+            {
+                Address = address,
+                Value = value,
+                Code = response.Results[0].Code
+            };
+
+            return tag;
+        }
+
+        /// <summary>
+        /// Write a value on a tag
+        /// </summary>
+        /// <param name="tag"> <see cref="Tag"/></param>
+        /// <param name="ct"> Cancellation token</param>
+        public Task<Tag> WriteAsync(Tag tag, CancellationToken ct = default)
+        {
+            var task = WriteAsync(tag.Address, tag.Value, ct);
+
+            return task;
         }
 
         #endregion
 
+        #region Dispose methods
         /// <summary>
         /// Synchronously disconnects the active OPC UA session and releases all managed resources.
         /// </summary>
@@ -1184,8 +1063,7 @@ namespace OpcUa.NetBridge
             await DisconnectAsync();
             GC.SuppressFinalize(this);
         }
-
-
+        #endregion
     }
 
 
