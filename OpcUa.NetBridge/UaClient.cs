@@ -28,7 +28,9 @@ namespace OpcUa.NetBridge
         private SessionReconnectHandler? _reconnectHandler;
         
         private ushort _namespaceIndex;
-
+        
+        // Keep track of a single subscription for each time interval (e.g., 1000ms, 500ms)
+        private readonly Dictionary<int, Subscription> _activeSubscriptions = new();
         #endregion
 
         #region Private methods
@@ -62,7 +64,23 @@ namespace OpcUa.NetBridge
 
                 if (_reconnectHandler.Session != null)
                 {
-                    this._session = (Session)_reconnectHandler.Session;
+                    var oldSession = _session;
+                    _session = (Session)_reconnectHandler.Session;
+
+                    // Synchronize the local dictionary with the subscriptions already transferred by SessionReconnectHandler
+                    _activeSubscriptions.Clear();
+
+                    foreach (var subscription in _session.Subscriptions)
+                    {
+                        int interval = (int)subscription.PublishingInterval;
+                        _activeSubscriptions[interval] = subscription;
+                    }
+
+                    // Dispose the replaced session if a new instance was created
+                    if (oldSession != null && !ReferenceEquals(oldSession, _session))
+                    {
+                        oldSession.Dispose();
+                    }
                 }
 
                 _reconnectHandler.Dispose();
@@ -162,6 +180,27 @@ namespace OpcUa.NetBridge
 
             return subscription;
         }
+
+        private (Subscription subscription, bool IsNew) GetOrCreateSubscription(int milliseconds)
+        {
+            lock (_lock)
+            {
+                // If a subscription for the specified interval already exists, return it
+                if (_activeSubscriptions.TryGetValue(milliseconds, out var existingSubscription))
+                {
+                    return (existingSubscription, false);
+                }
+
+                // Otherwise, create a new subscription for the specified interval
+                var newSubscription = Subscription(milliseconds);
+
+                ActiveSession.AddSubscription(newSubscription);
+                _activeSubscriptions[milliseconds] = newSubscription;
+
+                return (newSubscription, true);
+            }
+        }
+
 
         /// <summary>
         /// Parses a string address into a native OPC UA <see cref="NodeId"/>, supporting raw NodeId formats, numeric identifiers, and string identifiers.
@@ -426,7 +465,7 @@ namespace OpcUa.NetBridge
         /// A list of tags <see cref="Tag"/>
         /// </returns>
         [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use ReadAsync() instead.")]
-        public List<Tag> Read(List<string> address)
+        public List<Tag> Read(IEnumerable<string> address)
         {
             return Task.Run(() => ReadAsync(address)).GetAwaiter().GetResult().ToList();
         }
@@ -464,7 +503,7 @@ namespace OpcUa.NetBridge
         /// <param name="tags"> <see cref="Tag"/></param>
         /// <exception cref="WriteException"></exception>
         [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use WriteAsync() instead.")]
-        public void Write(List<Tag> tags)
+        public void Write(IEnumerable<Tag> tags)
         {
             Task.Run(() => WriteAsync(tags)).GetAwaiter().GetResult();
         }
@@ -482,22 +521,27 @@ namespace OpcUa.NetBridge
         /// Function to execute when the value changes.
         /// </param>
         [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use MonitoringAsync() instead.")]
-        public void Monitoring(string address, int milliseconds, MonitoredItemNotificationEventHandler monitor)
+        public void Monitoring(string address, int milliseconds, MonitoredTagNotificationEventHandler monitor)
         {
-            var subscription = Subscription(milliseconds);
+            Task.Run(() => MonitoringAsync(address, milliseconds, monitor)).GetAwaiter().GetResult();
+        }
 
-            var monitored = new MonitoredItem
-            {
-                StartNodeId = ParseNodeId(address),
-                AttributeId = Attributes.Value
-            };
-
-            monitored.Notification += monitor;
-            subscription.AddItem(monitored);
-
-            ActiveSession.AddSubscription(subscription);
-            subscription.Create();
-            subscription.ApplyChanges();
+        /// <summary>
+        /// Monitoring a list of tags and execute a function when the value change
+        /// </summary>
+        /// <param name="addresses">
+        /// Addresses of the tags
+        /// </param>
+        /// <param name="milliseconds">
+        /// Sets the time to check changes in the tag
+        /// </param>
+        /// <param name="monitor">
+        /// Function to execute when the value changes.
+        /// </param>
+        [Obsolete("Use MonitoringAsync instead.")]
+        public void Monitoring(IEnumerable<string> addresses, int milliseconds, MonitoredTagNotificationEventHandler monitor)
+        {
+            Task.Run(() => MonitoringAsync(addresses, milliseconds, monitor)).GetAwaiter().GetResult();
         }
 
         /// <summary>
@@ -704,6 +748,11 @@ namespace OpcUa.NetBridge
             }
             finally
             {
+                lock (_lock)
+                {
+                    _activeSubscriptions.Clear();
+                }
+
                 // Always release session resources even if already disconnected or if CloseAsync fails
                 _session.Dispose();
                 _session = null;
@@ -995,27 +1044,14 @@ namespace OpcUa.NetBridge
         /// </param>
         public async Task<Tag> WriteAsync(string address, object value, CancellationToken ct = default)
         {
-            var writeValues = new WriteValueCollection();
-            var writeValue = new WriteValue
-            {
-                NodeId = ParseNodeId(address),
-                AttributeId = Attributes.Value,
-                Value = new DataValue
-                {
-                    Value = value
-                }
-            };
-            writeValues.Add(writeValue);
-            var response = await ActiveSession.WriteAsync(null, writeValues, ct);
+            var results = await WriteAsync([new Tag { Address = address, Value = value }], ct);
 
-            var tag = new Tag()
+            return results.FirstOrDefault() ?? new Tag
             {
                 Address = address,
                 Value = value,
-                Code = response.Results[0].Code
+                Code = StatusCodes.BadUnexpectedError
             };
-
-            return tag;
         }
 
         /// <summary>
@@ -1028,6 +1064,104 @@ namespace OpcUa.NetBridge
             var task = WriteAsync(tag.Address, tag.Value, ct);
 
             return task;
+        }
+
+        /// <summary>
+        /// Monitoring a a list of tags and execute a function when the value change
+        /// </summary>
+        /// <param name="addresses">
+        /// Addresses of the tags
+        /// </param>
+        /// <param name="milliseconds">
+        /// Sets the time to check changes in the tag
+        /// </param>
+        /// <param name="monitor">
+        /// Function to execute when the value changes.
+        /// </param>
+        /// <param name="ct">
+        /// Cancellation token
+        /// </param>
+        public async Task MonitoringAsync(IEnumerable<string> addresses,
+                                          int milliseconds,
+                                          MonitoredTagNotificationEventHandler monitor,
+                                          CancellationToken ct = default)
+        {
+            IList<string> addressList = addresses as IList<string> ?? addresses?.ToList() ?? [];
+
+            if (addressList.Count == 0)
+                return;
+
+            var (subscription, isNew) = GetOrCreateSubscription(milliseconds);
+
+            foreach (var address in addressList)
+            {
+                var nodeId = ParseNodeId(address);
+
+                var monitored = new MonitoredItem(new SilentTelemetry())
+                {
+                    StartNodeId = nodeId,
+                    AttributeId = Attributes.Value,
+                    SamplingInterval = milliseconds
+                };
+
+                monitored.Notification += (_, e) =>
+                {
+                    try
+                    {
+                        if (e.NotificationValue is MonitoredItemNotification notification)
+                        {
+                            var dataValue = notification.Value;
+
+                            var tagUpdate = new Tag
+                            {
+                                Address = address,
+                                Value = dataValue.Value,
+                                Code = dataValue.StatusCode
+                            };
+
+                            monitor?.Invoke(this, new TagEventArgs(tagUpdate));
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Error in monitoring notification for '{address}': {ex.Message}");
+                    }
+                };
+
+                subscription.AddItem(monitored);
+            }
+
+            if (isNew)
+            {
+                await subscription.CreateAsync(ct);
+            }
+            else
+            {
+                await subscription.ApplyChangesAsync(ct);
+            }
+        }
+
+        /// <summary>
+        /// Monitoring a tag and execute a function when the value change
+        /// </summary>
+        /// <param name="address">
+        /// Address of the tag
+        /// </param>
+        /// <param name="milliseconds">
+        /// Sets the time to check changes in the tag
+        /// </param>
+        /// <param name="monitor">
+        /// Function to execute when the value changes.
+        /// </param>
+        /// <param name="ct">
+        /// Cancellation token
+        /// </param>
+        public Task MonitoringAsync(string address,
+                                    int milliseconds,
+                                    MonitoredTagNotificationEventHandler monitor,
+                                    CancellationToken ct = default)
+        {
+            return MonitoringAsync([address], milliseconds, monitor, ct);
         }
 
         #endregion
