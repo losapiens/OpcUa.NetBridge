@@ -556,29 +556,8 @@ namespace OpcUa.NetBridge
         [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use DevicesAsync() instead.")]
         public List<Device> Devices(bool recursive = false)
         {
-            Browser browser = new Browser(this._session)
-            {
-                BrowseDirection = BrowseDirection.Forward,
-                NodeClassMask = (int)NodeClass.Object | (int)NodeClass.Variable,
-                ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences
-            };
-
-            ReferenceDescriptionCollection browseResults = browser.Browse(Opc.Ua.ObjectIds.ObjectsFolder);
-
-            var devices = browseResults.Where(d => d.ToString() != "Server").Select(b => new Device
-            {
-                Address = b.ToString()
-            }).ToList();
-
-            devices.ForEach(d =>
-            {
-                d.Groups = this.Groups(d.Address, recursive);
-                d.Tags = this.Tags(d.Address);
-            });
-
-            return devices;
+            return Task.Run(() => DevicesAsync(recursive)).GetAwaiter().GetResult();
         }
-
 
         /// <summary>
         /// Scan an address and retrieve the tags and groups
@@ -595,31 +574,8 @@ namespace OpcUa.NetBridge
         [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use GroupsAsync() instead.")]
         public List<Group> Groups(string address, bool recursive = false)
         {
-            var groups = new List<Group>();
-            Browser browser = new Browser(ActiveSession)
-            {
-                BrowseDirection = BrowseDirection.Forward,
-                NodeClassMask = (int)NodeClass.Object | (int)NodeClass.Variable,
-                ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences
-            };
-
-            ReferenceDescriptionCollection browseResults = browser.Browse(new NodeId(address, _namespaceIndex));
-
-            foreach (var result in browseResults)
-            {
-                if (result.NodeClass != NodeClass.Object) continue;
-                var group = new Group
-                {
-                    Address = address + "." + result.ToString()
-                };
-                group.Groups = Groups(group.Address, recursive);
-                group.Tags = Tags(group.Address);
-                groups.Add(group);
-            }
-
-            return groups;
+            return Task.Run(() => GroupsAsync(address, recursive)).GetAwaiter().GetResult();
         }
-
 
         /// <summary>
         /// Scan an address and retrieve the tags.
@@ -633,27 +589,7 @@ namespace OpcUa.NetBridge
         [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use TagsAsync() instead.")]
         public List<Tag> Tags(string address)
         {
-            var tags = new List<Tag>();
-            var browser = new Browser(ActiveSession)
-            {
-                BrowseDirection = BrowseDirection.Forward,
-                NodeClassMask = (int)NodeClass.Object | (int)NodeClass.Variable,
-                ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences
-            };
-
-            var browseResults = browser.BrowseAsync(ParseNodeId(address)).GetAwaiter().GetResult();
-            foreach (var result in browseResults)
-            {
-                if (result.NodeClass == NodeClass.Variable)
-                {
-                    tags.Add(new Tag
-                    {
-                        Address = address + "." + result
-                    });
-                }
-            }
-
-            return tags;
+            return Task.Run(() => TagsAsync(address)).GetAwaiter().GetResult();
         }
         #endregion
 
@@ -678,24 +614,22 @@ namespace OpcUa.NetBridge
             
             await DisconnectAsync(ct);
 
-            // 1. Istanziamo la factory ufficiale passando il contesto di telemetria silenziato
+            // 1. Instantiate the official session factory with a silent telemetry context
             ISessionFactory sessionFactory = new DefaultSessionFactory(new SilentTelemetry());
 
-            // 2. Chiamiamo il metodo CreateAsync sulla factory. 
-            // Questa firma accetta esattamente 9 parametri e mappa alla perfezione i tuoi argomenti.
-            var session = await sessionFactory.CreateAsync(
-                _appConfig,
-                _endpoint,
-                false,                             // updateBeforeConnect
-                false,                             // checkDomain
-                _appConfig.ApplicationName,        // sessionName
-                timeOut * 1000,                    // sessionTimeout
-                _userIdentity,                     // identity
-                null,                              // preferredLocales
-                ct                                 // CancellationToken (Parametro 9, pulito!)
-            );
+            // 2. Create the session asynchronously using the 9-parameter factory overload
+            var session = await sessionFactory.CreateAsync(_appConfig,
+                                                           _endpoint,
+                                                           false,                      // updateBeforeConnect
+                                                           false,                      // checkDomain
+                                                           _appConfig.ApplicationName, // sessionName
+                                                           timeOut * 1000,             // sessionTimeout
+                                                           _userIdentity,              // identity
+                                                           null,                       // preferredLocales
+                                                           ct                          // cancellationToken
+                                                           );
 
-            // 3. Facciamo il cast a Session per mantenere la compatibilità con la variabile di classe di joc-luis
+            // 3. Cast to concrete Session to match the internal class field type
             _session = (Session)session;
 
             if (keepAlive)
@@ -776,27 +710,41 @@ namespace OpcUa.NetBridge
             Browser browser = new Browser(ActiveSession)
             {
                 BrowseDirection = BrowseDirection.Forward,
-                NodeClassMask = (int)NodeClass.Object | (int)NodeClass.Variable,
+                NodeClassMask = (int)NodeClass.Object, // | (int)NodeClass.Variable,
                 ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences
             };
 
             // Execute the browse operation asynchronously
-            ReferenceDescriptionCollection browseResults = await browser.BrowseAsync(ObjectIds.ObjectsFolder);
+            ReferenceDescriptionCollection? browseResults = await browser.BrowseAsync(ObjectIds.ObjectsFolder, ct);
 
-            // Filter out system nodes (NamespaceIndex == 0) to avoid processing system/server objects
-            var devices = browseResults
-                 .Where(d => d.NodeId.NamespaceIndex != 0).Select(b => new Device
-                 {
-                     Address = b.NodeId.ToString(),
-                     Name = b.DisplayName.Text
-                 }).ToList();
+            if (browseResults is not { Count: > 0 })
+            {
+                return [];
+            }
 
-            foreach (var d in devices)
+            var devices = new List<Device>(browseResults.Count);
+
+            foreach(var result in browseResults)
             {
                 ct.ThrowIfCancellationRequested();
+                // Convert ExpandedNodeId to standard NodeId safely using the session's namespace table
+                NodeId targetNodeId = ExpandedNodeId.ToNodeId(result.NodeId, ActiveSession.NamespaceUris);
 
-                d.Groups = await GroupsAsync(d.Address, recursive, ct);
-                d.Tags = await TagsAsync(d.Address, ct);
+                // Filter out system nodes (NamespaceIndex == 0) to avoid processing system/server objects
+                if (NodeId.IsNull(targetNodeId) || targetNodeId.NamespaceIndex == 0 || result.NodeClass != NodeClass.Object)
+                {
+                    continue;
+                }
+
+                string deviceAddress = targetNodeId.ToString();
+
+                devices.Add(new Device
+                {
+                    Address = deviceAddress,
+                    Name = result.DisplayName?.Text ?? result.BrowseName?.Name ?? deviceAddress,
+                    Groups = await GroupsAsync(deviceAddress, recursive, ct),
+                    Tags = await TagsAsync(deviceAddress, ct)
+                });
             }
 
             return devices;
