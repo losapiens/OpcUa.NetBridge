@@ -32,4 +32,10 @@
     <ProjectReference Include="..\OPCUa.NetBridge\OPCUa.NetBridge.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="OpcServerTest.xml">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

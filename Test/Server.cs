@@ -1,107 +1,99 @@
-﻿using OpcUa.NetBridge;
+﻿using System.Diagnostics.Metrics;
 
-namespace Test
+namespace OpcUa.NetBridge.Tests;
+
+public class Server : OpcTestBase
 {
-    public class Server
+    private const string MyMeterFolder = "MyMeter";
+    private const string NumericFolder = $"{MyMeterFolder}.Numeric";
+    private const string TestFolder = $"{MyMeterFolder}.Test";
+
+    [Test]
+    public void Connection()
     {
-        [Test]
-        public void Connection()
-        {
+        Assert.Pass();
+    }
 
-            UaClient client = new UaClient("testingConect", "opc.tcp://localhost:52240", true, true);
-            client.Connect(30);
-            client.Disconnect();
-            Assert.Pass();
-        }
+    [Test]
+    public async Task DevicesAsync()
+    {
+        // 1. Non-recursive (default): loads devices, direct tags, and top-level groups only
+        var shallowDevices = await Client.DevicesAsync(recursive: false);
+        var shallowMyMeter = shallowDevices.FirstOrDefault(d => d.Name == "MyMeter");
 
-        [Test]
-        public void FullScan()
+        using (Assert.EnterMultipleScope())
         {
-            UaClient client = new UaClient("testingConect", "opc.tcp://localhost:52240", true, true);
-            client.Connect(30);
-            var devices = client.Devices(true);
-            Assert.Equals(2, devices.Count);
-            Assert.Equals(3, devices[0].Groups.Count);
-            Assert.Equals("NexusMeter", devices[0].Name);
-            Assert.Equals(1022, devices[0].Tags.Count);
+            Assert.That(shallowDevices, Has.Count.EqualTo(2));
+            Assert.That(shallowMyMeter, Is.Not.Null);
+            Assert.That(shallowMyMeter!.Groups, Has.Count.EqualTo(2));
+            Assert.That(shallowMyMeter.Groups.SelectMany(g => g.Groups), Is.Empty);
         }
+    }
 
         [Test]
-        public void Devices()
-        {
-            UaClient client = new UaClient("testingConect", "opc.tcp://localhost:52240", true, true);
-            client.Connect(30);
-            var devices = client.Devices();
+    public async Task DevicesAsync_FullScan()
+    {
+        var devices = await Client.DevicesAsync(recursive: true);
 
-            Assert.Equals(2, devices.Count);
-            client.Disconnect();
+        var myMeter = devices.FirstOrDefault(d => d.Name == "MyMeter");
+        var srvInterface = devices.FirstOrDefault(d => d.Name == "ServerInterface");
+
+        using (Assert.EnterMultipleScope())
+        {
+            // 1. Finds both custom devices across different namespaces and excludes system "Server" node
+            Assert.That(devices, Has.Count.EqualTo(2));
+            Assert.That(myMeter, Is.Not.Null, "Expected to find root device 'MyMeter'.");
+            Assert.That(srvInterface, Is.Not.Null, "Expected to find root device 'ServerInterface'.");
+            Assert.That(devices.Any(d => d.Name.Equals("Server", StringComparison.OrdinalIgnoreCase)), Is.False,
+                "System node 'Server' (ns=0) should be excluded.");
+
+            // 2. MyMeter (ns=3): 2 groups (with nested recursion) and 0 direct tags
+            Assert.That(myMeter!.Address, Does.StartWith("ns=3;"));
+            Assert.That(myMeter.Groups, Has.Count.EqualTo(2));
+            Assert.That(myMeter.Tags, Is.Empty);
+            Assert.That(myMeter.Groups.First(g => g.Address.EndsWith("MyMeter.Test")).Groups, Has.Count.EqualTo(1));
+
+            // 3. SecondDevice (ns=2): 0 groups and 1 direct tag ("Status")
+            Assert.That(srvInterface!.Address, Does.StartWith("ns=4;"));
+            Assert.That(srvInterface.Groups, Is.Empty);
+            Assert.That(srvInterface.Tags, Has.Count.EqualTo(1));
+            Assert.That(srvInterface.Tags[0].Name, Is.EqualTo("Status"));
         }
 
-        [Test]
-        public void Groups()
-        {
-            UaClient client = new UaClient("testingConect", "opc.tcp://localhost:52240", true, true);
-            client.Connect(30);
-            var groups = client.Groups("NexusMeter", false);
+        // 4. Verify the tag discovered on SecondDevice (ns=2) can be read directly without changing client namespace
+        int statusValue = await Client.ReadAsync<int>(srvInterface!.Tags[0].Address);
+        Assert.That(statusValue, Is.EqualTo(1));
+    }
 
-            Assert.Equals(3, groups.Count);
-            client.Disconnect();
+    [Test]
+    public async Task GroupsAsync()
+    {
+        // 1. Non-recursive: returns the 2 top-level groups with empty child Groups lists
+        var groups = await Client.GroupsAsync(MyMeterFolder, recursive: false);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(groups, Has.Count.EqualTo(2));
+            Assert.That(groups.SelectMany(g => g.Groups), Is.Empty);
         }
 
+        // 2. Recursive: still 2 top-level groups, but the subfolder is populated inside its parent's Groups
+        groups = await Client.GroupsAsync(MyMeterFolder, recursive: true);
+        var testGroup = groups.First(g => g.Address.EndsWith("Test"));
 
-        [Test]
-        public void Tags()
+        using (Assert.EnterMultipleScope())
         {
-            UaClient client = new UaClient("testingConect", "opc.tcp://localhost:52240", true, true);
-            client.Connect(30);
-
-            var tags = client.Tags("NexusMeter");
-            Assert.Equals(1022, tags.Count);
-
-            tags = client.Tags("NexusMeter.Test");
-            Assert.Equals(6, tags.Count);
-            
-            client.Disconnect();
+            Assert.That(groups, Has.Count.EqualTo(2));
+            Assert.That(testGroup.Groups, Has.Count.EqualTo(1));
         }
-        
-       
+    }
 
-        
-        [Test]
-        public async Task DevicesAsync()
-        {
-            UaClient client = new UaClient("testingConect", "opc.tcp://localhost:52240", true, true);
-            await client.ConnectAsync(30);
-            var devices =  client.DevicesAsync();
+    [Test]
+    public async Task TagsAsync()
+    {
+        var tags = await Client.TagsAsync(TestFolder);
+        Assert.AreEqual(6, tags.Count);
 
-            Assert.Equals(2, (await devices).Count);
-            await client.DisconnectAsync();
-        }
-
-        [Test]
-        public async Task GroupsAsync()
-        {
-            UaClient client = new UaClient("testingConect", "opc.tcp://localhost:52240", true, true);
-            await client.ConnectAsync(30);
-            var groups = await client.GroupsAsync("NexusMeter", false);
-
-            Assert.Equals(3, groups.Count);
-            await client.DisconnectAsync();
-        }
-
-        [Test]
-        public async Task TagsAsync()
-        {
-            UaClient client = new UaClient("testingConect", "opc.tcp://localhost:52240", true, true);
-            await client.ConnectAsync(30);
-            
-            var tags = await client.TagsAsync("NexusMeter.Test");
-            Assert.Equals(6, tags.Count);
-
-            tags = await client.TagsAsync("NexusMeter");
-            Assert.Equals(1044, tags.Count);
-            
-            await client.DisconnectAsync();
-        }
+        tags = await Client.TagsAsync(NumericFolder);
+        Assert.AreEqual(1044, tags.Count);
     }
 }
