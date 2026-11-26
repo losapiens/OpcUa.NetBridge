@@ -141,7 +141,11 @@ namespace OpcUa.NetBridge
 
                     if (child.NodeClass == NodeClass.Variable)
                     {
-                        tags.Add(new Tag { Address = childNodeId.ToString() });
+                        tags.Add(new Tag
+                        {
+                            Address = childNodeId.ToString(),
+                            Name = child.DisplayName?.Text ?? child.BrowseName?.Name ?? string.Empty
+                        });
                     }
 
                     // Recurse only if the child is an Object (folder) or a non-built-in Variable (potential UDT/struct)
@@ -154,6 +158,7 @@ namespace OpcUa.NetBridge
                 var group = new Group
                 {
                     Address = targetNodeId.ToString(),
+                    Name = result.DisplayName?.Text ?? result.BrowseName?.Name ?? string.Empty,
                     Tags = tags,
                     Groups = (recursive && hasChildObjectsOrStructs && visited.Add(targetNodeId))
                         ? await BrowseGroupsInternalAsync(browser, targetNodeId, true, visited, ct)
@@ -829,7 +834,7 @@ namespace OpcUa.NetBridge
                 {
                     tags.Add(new Tag
                     {
-                        //Name = result.DisplayName?.Text ?? result.BrowseName?.Name,
+                        Name = result.DisplayName?.Text ?? result.BrowseName?.Name ?? string.Empty,
                         Address = targetNodeId.ToString()
                     });
                 }
@@ -872,7 +877,8 @@ namespace OpcUa.NetBridge
             return [.. dataValues.Results.Select((t, i) => new Tag
                 {
                     Address = addressList[i],
-                    Value = t.Value,
+                    Value = t.Value,   
+                    Timestamp = t.SourceTimestamp != DateTime.MinValue ? t.SourceTimestamp : t.ServerTimestamp,
                     Code = t.StatusCode
                 })];
         }

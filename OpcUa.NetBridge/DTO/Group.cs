@@ -6,11 +6,16 @@
 /// </summary>
 public class Group
 {
+    private string? _name;
 
     /// <summary>
     /// Name of the group
     /// </summary>
-    public string Name => Address[(Address.LastIndexOf('.') + 1)..];
+    public string Name
+    {
+        get => !string.IsNullOrEmpty(_name) ? _name : Tag.ExtractNameFromAddress(Address);
+        set => _name = value;
+    }
 
     /// <summary>
     /// Address of the group
