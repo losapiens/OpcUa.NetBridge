@@ -486,7 +486,7 @@ namespace OpcUa.NetBridge
         /// </param>
         /// <exception cref="WriteException"></exception>
         [Obsolete("This synchronous method is deprecated and will be removed in future versions. Use WriteAsync() instead.")]
-        public void Write(string address, object value)
+        public void Write(string address, object? value)
         {
             Task.Run(() => WriteAsync(address, value)).GetAwaiter().GetResult();
         }
@@ -926,7 +926,13 @@ namespace OpcUa.NetBridge
         /// </exception>
         public async Task<TValue> ReadAsync<TValue>(string address, CancellationToken ct = default)
         {
-            var tag = await ReadAsync(address, ct);
+            var results = await ReadAsync([address], ct);
+            var tag = results.FirstOrDefault() ?? new Tag
+            {
+                Address = address,
+                Value = null,
+                Code = StatusCodes.BadUnexpectedError
+            };
 
             if (StatusCode.IsNotGood(tag.Code))
             {
@@ -996,7 +1002,7 @@ namespace OpcUa.NetBridge
         /// <param name="ct">
         /// Cancellation token
         /// </param>
-        public async Task<Tag> WriteAsync(string address, object value, CancellationToken ct = default)
+        public async Task<Tag> WriteAsync(string address, object? value, CancellationToken ct = default)
         {
             var results = await WriteAsync([new Tag { Address = address, Value = value }], ct);
 
@@ -1013,11 +1019,18 @@ namespace OpcUa.NetBridge
         /// </summary>
         /// <param name="tag"> <see cref="Tag"/></param>
         /// <param name="ct"> Cancellation token</param>
-        public Task<Tag> WriteAsync(Tag tag, CancellationToken ct = default)
+        public async Task<Tag> WriteAsync(Tag tag, CancellationToken ct = default)
         {
-            var task = WriteAsync(tag.Address, tag.Value, ct);
+            ArgumentNullException.ThrowIfNull(tag);
 
-            return task;
+            var results = await WriteAsync([tag], ct);
+            return results.FirstOrDefault() ?? new Tag
+            {
+                Address = tag.Address,
+                Name = tag.Name,
+                Value = tag.Value,
+                Code = StatusCodes.BadUnexpectedError
+            };
         }
 
         /// <summary>
