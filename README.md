@@ -238,6 +238,6 @@ foreach (var tag in tags)
 
 ### License
 
-[MIT](./LICENSE.md)
+[MIT](./LICENSE)
 
 Icon for [Freepik](https://flaticon.com)

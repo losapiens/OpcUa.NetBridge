@@ -4,11 +4,10 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <GenerateDocumentationFile>True</GenerateDocumentationFile>
 	
 	<!-- NuGet Package Metadata -->
 	<PackageId>OpcUa.NetBridge</PackageId>
-    <Version>1.0.0-beta.1</Version>
+    <Version>1.0.0-beta.2</Version>
 	<Title>OpcUa.NetBridge</Title>
 	<Product>OpcUa.NetBridge</Product>
 	<Authors>Losapiens</Authors>
@@ -18,11 +17,12 @@
 	<PackageTags>opcua;opc-ua;opc;client;plc;industrial-automation;iiot;net8;wrapper</PackageTags>
 
     <!-- Repository & Source Link -->
-	<RepositoryUrl>https://github.com/losapiens/OpcUa.NetBridge</RepositoryUrl>  
+	<PackageProjectUrl>https://github.com/losapiens/OpcUa.NetBridge</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/losapiens/OpcUa.NetBridge</RepositoryUrl>
     <PackageIcon>connection.png</PackageIcon>
     <RepositoryType>git</RepositoryType>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
-    <EmbedUntrackedSources>true</EmbedUntrackedSources>  
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
 
     <!-- Debug Symbols (.snupkg) & XML Docs -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
@@ -36,9 +36,11 @@
     <PackageReleaseNotes>
       Initial release of OpcUa.NetBridge targeting .NET 8.0:
       - Upgraded underlying OPC Foundation .NET Standard stack dependencies to v1.5.378+.
-      - Automatic, permission-safe certificate store resolution for desktop apps, Windows services, and debug sessions
-      - Isolated PKI folders per application name with restricted Windows ACLs
-    </PackageReleaseNotes>
+      - Automatic, permission-safe certificate store resolution for desktop apps, Windows services, and debug sessions with restricted Windows ACLs.
+      - Fully asynchronous API (*Async) with batch support (IEnumerable) for Read, Write, Monitoring, and Address Space Browsing (deprecating legacy sync methods).
+      - Completely decoupled public API (Tag, Group, Device, TagEventArgs) shielding consumer applications from OPCFoundation SDK types.
+      - Added UTC Timestamp and DisplayName resolution on Tag, plus flexible NodeId address support (symbolic string, numeric, and raw ns=... formats).
+	</PackageReleaseNotes>
   </PropertyGroup>
 
   <ItemGroup>
