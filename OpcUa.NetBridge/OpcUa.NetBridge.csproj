@@ -7,7 +7,7 @@
 	
 	<!-- NuGet Package Metadata -->
 	<PackageId>OpcUa.NetBridge</PackageId>
-    <Version>1.0.0-beta.3</Version>
+    <Version>1.0.0-beta.4</Version>
 	<Title>OpcUa.NetBridge</Title>
 	<Product>OpcUa.NetBridge</Product>
 	<Authors>Losapiens</Authors>
@@ -33,15 +33,19 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
 	<PackageLicenseFile>LICENSE</PackageLicenseFile>
 
-    <PackageReleaseNotes>
-      Release 1.0.0-beta.3:
-      - Fixed ApplicationCertificate store type (Directory) and ApplicationUri formatting for encrypted connections.
-      - Improved PLC certificate validation compatibility when untrusted certificates are allowed.
-      - Upgraded underlying OPC Foundation .NET Standard stack dependencies to v1.5.378+.
-      - Automatic, permission-safe certificate store resolution for desktop apps, Windows services, and debug sessions with restricted Windows ACLs.
-      - Fully asynchronous API (*Async) with batch support (IEnumerable) for Read, Write, Monitoring, and Address Space Browsing (deprecating legacy sync methods).
-      - Completely decoupled public API (Tag, Group, Device, TagEventArgs) shielding consumer applications from OPCFoundation SDK types.
-      - Added UTC Timestamp and DisplayName resolution on Tag, plus flexible NodeId address support (symbolic string, numeric, and raw ns=... formats).
+	<PackageReleaseNotes>
+		Release 1.0.0-beta.4:
+		- Added ReadAsync(IEnumerable&lt;Tag&gt;) overload to read discovered tags directly while preserving their DisplayName.
+		- Improved Tag.Name extraction from NodeIds containing quoted segments (such as Siemens S7-1200/S7-1500 addresses).
+
+		Previous releases:
+		- Fixed ApplicationCertificate store type (Directory) and ApplicationUri formatting for encrypted connections.
+		- Improved PLC certificate validation compatibility when untrusted certificates are allowed.
+		- Upgraded underlying OPC Foundation .NET Standard stack dependencies to v1.5.378+.
+		- Automatic, permission-safe certificate store resolution for desktop apps, Windows services, and debug sessions with restricted Windows ACLs.
+		- Fully asynchronous API (*Async) with batch support (IEnumerable) for Read, Write, Monitoring, and Address Space Browsing (deprecating legacy sync methods).
+		- Completely decoupled public API (Tag, Group, Device, TagEventArgs) shielding consumer applications from OPCFoundation SDK types.
+		- Added UTC Timestamp and DisplayName resolution on Tag, plus flexible NodeId address support (symbolic string, numeric, and raw ns=... formats).
 	</PackageReleaseNotes>
   </PropertyGroup>
 
