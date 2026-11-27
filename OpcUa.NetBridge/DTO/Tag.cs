@@ -50,14 +50,14 @@ public class Tag
             return string.Empty;
 
         int dotIndex = address.LastIndexOf('.');
-        if (dotIndex >= 0)
-            return address[(dotIndex + 1)..];
+        if (dotIndex >= 0 && dotIndex < address.Length - 1)
+            return address[(dotIndex + 1)..].Trim('"');
 
         // Handle raw NodeIds without dots (e.g., "ns=3;s=Status" -> "Status", "ns=2;i=1001" -> "1001")
         int equalsIndex = address.LastIndexOf('=');
-        if (equalsIndex >= 0)
-            return address[(equalsIndex + 1)..];
+        if (equalsIndex >= 0 && equalsIndex < address.Length - 1)
+            return address[(equalsIndex + 1)..].Trim('"');
 
-        return address;
+        return address.Trim('"');
     }
 }
