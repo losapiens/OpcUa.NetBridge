@@ -33,25 +33,13 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
 	<PackageLicenseFile>LICENSE</PackageLicenseFile>
 
-	<PackageReleaseNotes>
-		Release 1.0.0-beta.4:
-		- Added ReadAsync(IEnumerable&lt;Tag&gt;) overload to read discovered tags directly while preserving their DisplayName.
-		- Improved Tag.Name extraction from NodeIds containing quoted segments (such as Siemens S7-1200/S7-1500 addresses).
-
-		Previous releases:
-		- Fixed ApplicationCertificate store type (Directory) and ApplicationUri formatting for encrypted connections.
-		- Improved PLC certificate validation compatibility when untrusted certificates are allowed.
-		- Upgraded underlying OPC Foundation .NET Standard stack dependencies to v1.5.378+.
-		- Automatic, permission-safe certificate store resolution for desktop apps, Windows services, and debug sessions with restricted Windows ACLs.
-		- Fully asynchronous API (*Async) with batch support (IEnumerable) for Read, Write, Monitoring, and Address Space Browsing (deprecating legacy sync methods).
-		- Completely decoupled public API (Tag, Group, Device, TagEventArgs) shielding consumer applications from OPCFoundation SDK types.
-		- Added UTC Timestamp and DisplayName resolution on Tag, plus flexible NodeId address support (symbolic string, numeric, and raw ns=... formats).
-	</PackageReleaseNotes>
+    <PackageReleaseNotes>See full release notes at $(RepositoryUrl)/blob/release/1.x/CHANGELOG.md</PackageReleaseNotes>
   </PropertyGroup>
 
   <ItemGroup>
     <None Include="..\README.md" Pack="true" PackagePath="\"  />
     <None Include="..\LICENSE" Pack="true" PackagePath="\" />
+    <None Include="..\CHANGELOG.md" Pack="true" PackagePath="\" />
     <None Include="connection.png" Pack="true" PackagePath="\" />
   </ItemGroup>
 

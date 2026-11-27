@@ -128,6 +128,7 @@ int rawTag = await client.ReadAsync<int>("ns=2;i=1001");
 
 #### Read Multiple Tags (Batch)
 ```csharp
+// 1. Read by addresses (Tag.Name is automatically extracted from each address)
 string[] addresses =
 [
     "Device.Counter.OK",
@@ -141,6 +142,15 @@ IEnumerable<Tag> tags = await client.ReadAsync(addresses);
 foreach (var tag in tags)
 {
     Console.WriteLine(\$"Name: {tag.Name} | Address: {tag.Address} | Value: {tag.Value} | Quality: {tag.Quality} | Timestamp: {tag.Timestamp}");
+}
+
+// 2. Read using existing Tag objects (e.g. discovered via TagsAsync), preserving their DisplayName
+List<Tag> discoveredTags = await client.TagsAsync("Device.Counter");
+IEnumerable<Tag> updatedTags = await client.ReadAsync(discoveredTags);
+
+foreach (var tag in updatedTags)
+{
+    Console.WriteLine(\$"Name: {tag.Name} | Value: {tag.Value} | Quality: {tag.Quality} | Timestamp: {tag.Timestamp}");
 }
 ```
 
@@ -238,6 +248,10 @@ foreach (var tag in tags)
 ```
 
 ---
+
+### Changelog
+
+See [CHANGELOG.md](./CHANGELOG.md) for a full list of changes and release notes.
 
 ### License
 
