@@ -29,7 +29,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\OPCUa.NetBridge\OPCUa.NetBridge.csproj" />
+    <ProjectReference Include="..\OpcUa.NetBridge\OpcUa.NetBridge.csproj" />
   </ItemGroup>
 
   <ItemGroup>
