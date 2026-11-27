@@ -1070,6 +1070,7 @@ namespace OpcUa.NetBridge
                             {
                                 Address = address,
                                 Value = dataValue.Value,
+                                Timestamp = dataValue.SourceTimestamp != DateTime.MinValue ? dataValue.SourceTimestamp : dataValue.ServerTimestamp,
                                 Code = dataValue.StatusCode
                             };
 
