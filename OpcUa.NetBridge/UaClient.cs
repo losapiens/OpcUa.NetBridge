@@ -953,6 +953,38 @@ namespace OpcUa.NetBridge
         }
 
         /// <summary>
+        /// Reads the current values and metadata for a collection of <see cref="Tag"/> objects from the OPC UA server, preserving their existing <see cref="Tag.Name"/>.
+        /// </summary>
+        /// <param name="tags">
+        /// The collection of <see cref="Tag"/> objects to read.
+        /// </param>
+        /// <param name="ct">
+        /// A token to cancel the asynchronous operation.
+        /// </param>
+        /// <returns>
+        /// A collection of <see cref="Tag"/> objects populated with their updated values, status codes, and timestamps.
+        /// </returns>
+        public async Task<IEnumerable<Tag>> ReadAsync(IEnumerable<Tag> tags, CancellationToken ct = default)
+        {
+            ArgumentNullException.ThrowIfNull(tags);
+
+            var tagList = tags as IList<Tag> ?? [.. tags];
+            if (tagList.Count == 0)
+            {
+                return [];
+            }
+
+            var results = (await ReadAsync(tagList.Select(t => t.Address), ct)).ToList();
+
+            for (int i = 0; i < results.Count && i < tagList.Count; i++)
+            {
+                results[i].Name = tagList[i].Name;
+            }
+
+            return results;
+        }
+
+        /// <summary>
         /// Write a lis of values
         /// </summary>
         /// <param name="tags"><see cref="Tag"/></param>
