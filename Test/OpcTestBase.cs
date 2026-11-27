@@ -12,13 +12,17 @@ public abstract class OpcTestBase
     public async Task BaseInit()
     {
         _serverUrl = OpcServerFixture.ServerUrl;
-        Client = new UaClient("NUnitTestServer", _serverUrl, _namespaceIndex, false, true);
+        Client = new UaClient("NUnitTestServer", _serverUrl, _namespaceIndex, true, true);
         await Client.ConnectAsync(30);
     }
 
     [TearDown]
     public async Task BaseCleanup()
     {
+        if (Client is null)
+        {
+            return;
+        }
         await Client.DisconnectAsync();
         await Client.DisposeAsync();
     }
