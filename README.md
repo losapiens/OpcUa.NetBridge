@@ -44,11 +44,14 @@ using OpcUa.NetBridge;
 
 #### Create a Client Instance
 ```csharp
-// Anonymous authentication
-await using var client = new UaClient("test", "opc.tcp://localhost:52240", true, true);
+// Anonymous authentication (uses default namespaceIndex = 2, security = false, untrusted = true)
+await using var client = new UaClient("test", "opc.tcp://localhost:52240");
+
+// Explicit namespace index (e.g., 3) and security options
+await using var customClient = new UaClient("test", "opc.tcp://localhost:52240", namespaceIndex: 3, security: true, untrusted: true);
 
 // Username and password authentication
-await using var authClient = new UaClient("test", "opc.tcp://localhost:52240", true, true, "admin", "password");
+await using var authClient = new UaClient("test", "opc.tcp://localhost:52240", namespaceIndex: 2, security: true, untrusted: true, user: "admin", password: "password");
 ```
 
 #### Connect, Set Default Namespace, and Disconnect
