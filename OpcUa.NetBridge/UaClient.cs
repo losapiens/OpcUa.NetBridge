@@ -322,12 +322,13 @@ namespace OpcUa.NetBridge
             _appConfig = new ApplicationConfiguration
             {
                 ApplicationName = appName,
-                ApplicationUri = Utils.Format(@"urn:{0}" + appName, hostName),
+                ApplicationUri = $"urn:{hostName}:{appName}",
                 ApplicationType = ApplicationType.Client,
                 SecurityConfiguration = new SecurityConfiguration
                 {
                     ApplicationCertificate = new CertificateIdentifier
                     {
+                        StoreType = @"Directory",
                         StorePath = Path.Combine(path, "Application"),
                         SubjectName = $"CN={appName}, DC={hostName}"
                     },
@@ -359,7 +360,19 @@ namespace OpcUa.NetBridge
 
             if (_appConfig.SecurityConfiguration.AutoAcceptUntrustedCertificates)
             {
-                _appConfig.CertificateValidator.CertificateValidation += (s, ee) => { ee.Accept = (ee.Error.StatusCode == StatusCodes.BadCertificateUntrusted && untrusted); };
+                _appConfig.CertificateValidator.CertificateValidation += (_, ee) =>
+                {
+                    if (!untrusted)
+                        return;
+
+                    if (ee.Error.StatusCode == StatusCodes.BadCertificateUntrusted ||
+                        ee.Error.StatusCode == StatusCodes.BadCertificateUseNotAllowed ||
+                        ee.Error.StatusCode == StatusCodes.BadCertificateTimeInvalid)
+                    {
+                        ee.Accept = true;
+                    }
+                };
+
             }
 
             var application = new ApplicationInstance(_appConfig, new SilentTelemetry())
